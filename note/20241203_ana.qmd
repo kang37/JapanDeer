@@ -1,0 +1,55 @@
+---
+title: "Urban deer study"
+author: "Kang"
+format: html
+editor: visual
+execute: 
+  echo: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+对鹿数据进行简单的预分析。首先提取出日本人口排名前20的城市地理范围内的鹿数据，可视化各城市5千米网格的鹿种群数量如下。可以放大查看各个城市的详情，可以改变地图底图来查看环境信息，如改成卫星图可以查看网格内的人居和森林比例。
+
+```{r}
+mapview(city_deer, zcol = "d_2022")
+```
+
+从人兽冲突的角度讲，可以初步简单计算鹿数量和人口数的比率。如果该比率越高，则潜在冲突越大。当然，实际潜在冲突还跟多种因素，例如地形、分布有关。并且，实际上发生冲突的可能性有可能是非线性的，也就说并非随着比率增加而直线增加，而是吵过某个临界值后才可能发生冲突。因此如果有各地人鹿冲突的数据，就可以进一步分析这点。这个结果也可以从另一个角度来看：影响鹿种群数量的因素是什么？可以是森林面积、农田、人类提供的某些资源等。
+
+```{r}
+city_deer %>%
+  left_join(st_drop_geometry(city_pop_agg), by = "mesh") %>%
+  mutate(deer_pre = d_2022 / pop_2015) %>%
+  mapview(zcol = "deer_pre")
+```
+
+可以对各城市做一个图，展示各城市网格中鹿数量和人口数的关系。下图中每个点表示一个网格。
+
+```{r}
+city_deer %>%
+  left_join(st_drop_geometry(city_pop_agg), by = "mesh") %>%
+  ggplot() +
+  geom_point(aes(d_2022, pop_2015), alpha = 0.5) +
+  geom_smooth(aes(d_2022, pop_2015), method = "lm") +
+  facet_wrap(.~ city, scales = "free")
+```
+
+除了空间维度，我们还有时间维度，可以看各个网格中鹿种群数量的变化。下图中每条线代表一个网格。这个数据同样有很多潜力，例如可以做环境-物种分布模型，可以分析鹿的空间和时间动态等。
+
+```{r}
+ggplot(city_deer_hist) +
+  geom_line(aes(
+    year, deer_d, col = as.character(mesh), group = as.character(mesh)
+  )) +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 90)
+  ) +
+  facet_wrap(.~ city, scales = "free_y")
+```
