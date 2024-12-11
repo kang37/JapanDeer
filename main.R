@@ -110,3 +110,64 @@ ggplot(city_deer_hist) +
     axis.text.x = element_text(angle = 90)
   ) +
   facet_wrap(.~ city, scales = "free_y")
+
+# Kyoto test ----
+kyo_land <- st_read(
+  "data_raw/LandUse/L03-b-16_5235-tky_GML", "L03-b-16_5235-tky",
+  options = "ENCODING=Shift-JIS"
+) %>%
+  rename(
+    "mesh_10d" = "メッシュ", "land_code" = "土地利用種", date = "撮影年月日"
+  ) %>%
+  # 构造7位数mesh：在6位数mesh基础上增加第7位。第7位数字由原10位数mesh的第7和第8位数字决定。
+  mutate(
+    mesh_6d = substr(mesh_10d, 1, 6),
+    mesh_10d_7 = substr(mesh_10d, 7, 7),
+    mesh_10d_8 = substr(mesh_10d, 8, 8),
+    mesh_7d_7 = case_when(
+      mesh_10d_7 <= 4 & mesh_10d_8 <= 4 ~ 1,
+      mesh_10d_7 <= 4 & mesh_10d_8 >= 5 ~ 2,
+      mesh_10d_7 >= 5 & mesh_10d_8 <= 4 ~ 3,
+      mesh_10d_7 >= 5 & mesh_10d_8 >= 5 ~ 4
+    ),
+    mesh = paste0(mesh_6d, mesh_7d_7)
+  )
+
+# 计算京都每个mesh中各类目标土地利用的比例。
+deer_mesh_land <- city_deer %>%
+  st_drop_geometry() %>%
+  select(mesh) %>%
+  # 漏洞：应该用inner_join还是left_join呢？
+  inner_join(st_drop_geometry(kyo_land), by = "mesh") %>%
+  # 每个mesh中包含多少个mesh_10d。
+  group_by(mesh) %>%
+  mutate(mesh_10d_num = n()) %>%
+  ungroup() %>%
+  # 每个mesh中各类土地利用mesh的数量。
+  group_by(mesh, mesh_10d_num, land_code) %>%
+  summarise(
+    land_mesh_10d_num = n(),
+    .groups = "drop"
+  ) %>%
+  # 各类土地利用在各个mesh中的比例。
+  mutate(land_prop = land_mesh_10d_num / mesh_10d_num)
+
+# 京都市鹿-森林潜在风险指数。
+city_deer %>%
+  inner_join(deer_mesh_land %>% filter(land_code == "0500"), by = "mesh") %>%
+  mutate(risk_forest = land_prop * d_2022) %>%
+  mapview(zcol = "risk_forest")
+# 京都市鹿-农田潜在风险指数。
+city_deer %>%
+  inner_join(deer_mesh_land %>% filter(land_code == "0100"), by = "mesh") %>%
+  mutate(risk_forest = land_prop * d_2022) %>%
+  mapview(zcol = "risk_forest")
+
+# 各类土地利用和鹿的关系。
+city_deer %>%
+  inner_join(deer_mesh_land, by = "mesh") %>%
+  st_drop_geometry() %>%
+  ggplot() +
+  geom_point(aes(land_prop, d_2022), alpha = 0.5) +
+  geom_smooth(aes(land_prop, d_2022), method = "lm") +
+  facet_grid(city ~ land_code, scales = "free")
