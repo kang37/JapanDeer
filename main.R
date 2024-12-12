@@ -5,6 +5,7 @@ library(mapview)
 library(tmap)
 library(tidyr)
 library(ggplot2)
+library(DescTools)
 library(showtext)
 showtext_auto()
 
@@ -221,6 +222,20 @@ st_drop_geometry(city_deer_risk_tar) %>%
   ggplot(aes(risk_forest, risk_agr)) +
   geom_point(aes(size = risk_human), alpha = 0.3) +
   geom_text(aes(label = city), vjust = -1, size = 2)
+
+## Gini ----
+city_deer_risk_tar %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  group_by(city, risk_cat) %>%
+  summarise(risk_gini = Gini(risk_val), .groups = "drop") %>%
+  ggplot() +
+  geom_col(aes(city, risk_gini)) +
+  facet_wrap(.~ risk_cat, ncol = 1, scales = "free")
 
 ## Habitat preference ----
 # 各城市鹿密度和人口及土地利用的关系。
