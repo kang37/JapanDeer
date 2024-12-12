@@ -5,7 +5,6 @@ library(mapview)
 library(tmap)
 library(tidyr)
 library(ggplot2)
-library(ensurer)
 library(showtext)
 showtext_auto()
 
@@ -13,14 +12,13 @@ showtext_auto()
 ## Basic ----
 # 漏洞：各个图层的mesh位置不一致。鹿数据和土地利用几乎一致，mesh人口数据和空mesh一致，相对偏右下，且和geosense网站似乎一致。目前将所有数据都对齐到全日本空mesh数据上。
 
-# 提取城市内的鹿数据：以指定都市为例。
+# 提取城市内的鹿数据：以指定都市为例。由于北海道无鹿调查数据，故不计入。
 city <- st_read("data_raw/JapanAdmin2022", "N03-22_220101") %>%
   select(pref = N03_001, city = N03_003) %>%
   filter(city %in% c(
     "大阪市", "名古屋市", "京都市", "横浜市", "神戸市", "北九州市",
-    "札幌市", "川崎市", "福岡市", "広島市", "仙台市", "千葉市",
-    "さいたま市", "静岡市", "堺市", "新潟市", "浜松市", "岡山市",
-    "相模原市", "熊本市"
+    "川崎市", "福岡市", "広島市", "仙台市", "千葉市", "さいたま市",
+    "静岡市", "堺市", "新潟市", "浜松市", "岡山市", "相模原市", "熊本市"
   )) %>%
   group_by(pref, city) %>%
   summarise(geometry = st_union(geometry), .groups = "drop") %>%
@@ -153,9 +151,7 @@ city_deer_risk <- city_mesh %>%
     risk_human = d_2022 * pop_2015,
     risk_agr = d_2022 * lu_0100,
     risk_forest = d_2022 * lu_0500
-  ) %>%
-  # 漏洞：应该在最开始去除札幌。
-  filter(city != "札幌市")
+  )
 # 漏洞：需要确保数值无缺。
 apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
