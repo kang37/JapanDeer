@@ -237,6 +237,24 @@ city_deer_risk_tar %>%
   geom_col(aes(city, risk_gini)) +
   facet_wrap(.~ risk_cat, ncol = 1, scales = "free")
 
+## Gini and average risk ----
+# 漏洞：和上面的重复了。
+city_deer_risk_tar %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  group_by(city, risk_cat) %>%
+  summarise(
+    risk_mean = mean(risk_val), risk_gini = Gini(risk_val), .groups = "drop"
+  ) %>%
+  ggplot() +
+  geom_point(aes(city, risk_mean, size = risk_gini), alpha = 0.5) +
+  facet_wrap(.~ risk_cat, ncol = 1, scales = "free") +
+  theme_bw()
+
 ## Habitat preference ----
 # 各城市鹿密度和人口及土地利用的关系。
 # 漏洞：有些城市基本没有数据。
