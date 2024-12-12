@@ -194,7 +194,9 @@ city_deer_risk_tar %>%
   ggplot(aes(city, risk_val)) +
   geom_boxplot() +
   geom_jitter(alpha = 0.3, col = "lightblue") +
-  facet_wrap(.~ risk_cat, scales = "free", ncol = 1)
+  facet_wrap(.~ risk_cat, scales = "free", ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
 
 # 不同风险之间的关系。
 ggplot(st_drop_geometry(city_deer_risk_tar)) +
@@ -236,3 +238,41 @@ st_drop_geometry(city_deer_risk_tar) %>%
   geom_point(aes(land_prop, d_2022), alpha = 0.5) +
   geom_smooth(aes(land_prop, d_2022), method = "lm") +
   facet_grid(city ~ land_code, scales = "free")
+
+# 计算鹿和人口密度、土地利用的关系。
+# 总体关系。
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$pop_2015)
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0100)
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0500)
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0600)
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0700)
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0901)
+# 漏洞：河川很可能是因为河川占地越大，陆地越少，则鹿越少。
+cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_1100)
+
+# 分城市统计。
+get_cor <- function(x) {
+  city_deer_risk_tar %>%
+    st_drop_geometry() %>%
+    group_by(city) %>%
+    summarise(
+      smp_size = n(),
+      cor_res = list(cor.test(d_2022, {{x}}))
+    ) %>%
+    mutate(
+      est = lapply(cor_res, function(x) x$estimate) %>% unlist(),
+      p = lapply(cor_res, function(x) x$p.value) %>% unlist(),
+    )
+}
+rbind(
+  get_cor(pop_2015) %>% mutate(grp = "pop_2015"),
+  get_cor(lu_0100) %>% mutate(grp = "lu_0100"),
+  get_cor(lu_0500) %>% mutate(grp = "lu_0500"),
+  get_cor(lu_0600) %>% mutate(grp = "lu_0600"),
+  get_cor(lu_0700) %>% mutate(grp = "lu_0700"),
+  get_cor(lu_0901) %>% mutate(grp = "lu_0901"),
+  get_cor(lu_1100) %>% mutate(grp = "lu_1100")
+) %>%
+  mutate(est = case_when(p < 0.05 ~ est, TRUE ~ NA)) %>%
+  ggplot() +
+  geom_tile(aes(city, grp, fill = c(est > 0)), col = "white")
