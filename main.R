@@ -155,18 +155,36 @@ city_deer_risk <- city_mesh %>%
 # 漏洞：需要确保数值无缺。
 apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
+# 筛选无风险城市。
+zero_risk_city <-
+  city_deer_risk %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  group_by(city) %>%
+  summarise(risk_sum = sum(risk_val)) %>%
+  filter(risk_sum == 0) %>%
+  pull(city)
+
+# 筛选最终分析城市。
+city_deer_risk_tar <- city_deer_risk %>%
+  filter(!city %in% zero_risk_city)
+
 # Analysis ----
 ## General ----
 # 各城市网格内鹿的数量。
-mapview(city_deer, zcol = "d_2022")
+mapview(city_deer_risk_tar, zcol = "d_2022")
 
 ## Risk ----
 # 各城市各网格的各种风险。
-mapview(city_deer_risk %>% select(mesh, risk_human), zcol = "risk_human")
-mapview(city_deer_risk %>% select(mesh, risk_agr), zcol = "risk_agr")
-mapview(city_deer_risk %>% select(mesh, risk_forest), zcol = "risk_forest")
+mapview(city_deer_risk_tar %>% select(mesh, risk_human), zcol = "risk_human")
+mapview(city_deer_risk_tar %>% select(mesh, risk_agr), zcol = "risk_agr")
+mapview(city_deer_risk_tar %>% select(mesh, risk_forest), zcol = "risk_forest")
 # 漏洞：如果城市的所有mesh的所有风险都为0，那么应该去掉。
-city_deer_risk %>%
+city_deer_risk_tar %>%
   st_drop_geometry() %>%
   select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
   pivot_longer(
@@ -179,19 +197,19 @@ city_deer_risk %>%
   facet_wrap(.~ risk_cat, scales = "free", ncol = 1)
 
 # 不同风险之间的关系。
-ggplot(st_drop_geometry(city_deer_risk)) +
+ggplot(st_drop_geometry(city_deer_risk_tar)) +
   geom_point(aes(risk_human, risk_forest), alpha = 0.5) +
   facet_wrap(.~ city)
-ggplot(st_drop_geometry(city_deer_risk)) +
+ggplot(st_drop_geometry(city_deer_risk_tar)) +
   geom_point(aes(risk_human, risk_agr), alpha = 0.5) +
   facet_wrap(.~ city)
-ggplot(st_drop_geometry(city_deer_risk)) +
+ggplot(st_drop_geometry(city_deer_risk_tar)) +
   geom_point(aes(risk_forest, risk_agr), alpha = 0.5) +
   facet_wrap(.~ city)
 
 # 各个城市的平均风险。
 # 漏洞：应该算平均值吗？NA值也尚未处理。
-st_drop_geometry(city_deer_risk) %>%
+st_drop_geometry(city_deer_risk_tar) %>%
   group_by(city) %>%
   summarise(
     risk_human = mean(risk_human, na.rm = TRUE),
@@ -205,17 +223,16 @@ st_drop_geometry(city_deer_risk) %>%
 ## Habitat preference ----
 # 各城市鹿密度和人口及土地利用的关系。
 # 漏洞：有些城市基本没有数据。
-st_drop_geometry(city_deer_risk) %>%
+st_drop_geometry(city_deer_risk_tar) %>%
   ggplot() +
   geom_point(aes(pop_2015, d_2022), alpha = 0.5) +
   geom_smooth(aes(pop_2015, d_2022), method = "lm") +
   facet_wrap(.~ city, scales = "free")
 # 漏洞：看不清图。
-st_drop_geometry(city_deer_risk) %>%
+st_drop_geometry(city_deer_risk_tar) %>%
   select(city, mesh, area, d_2022) %>%
   left_join(city_deer_mesh_land, by = "mesh") %>%
   ggplot() +
   geom_point(aes(land_prop, d_2022), alpha = 0.5) +
   geom_smooth(aes(land_prop, d_2022), method = "lm") +
   facet_grid(city ~ land_code, scales = "free")
-
