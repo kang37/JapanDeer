@@ -5,6 +5,7 @@ library(mapview)
 library(tmap)
 library(tidyr)
 library(ggplot2)
+library(ensurer)
 library(showtext)
 showtext_auto()
 
@@ -105,9 +106,10 @@ jp_land <- lapply(
   bind_rows()
 
 # 计算各城市每个mesh中各类目标土地利用的比例。
-city_deer_mesh_land <- city_deer %>%
+city_deer_mesh_land <- city_mesh %>%
   st_drop_geometry() %>%
   select(mesh) %>%
+  distinct() %>%
   # 漏洞：应该用inner_join还是left_join呢？
   inner_join(jp_land, by = "mesh") %>%
   # 每个mesh中包含多少个mesh_10d。
@@ -135,24 +137,50 @@ city_deer_mesh_land_wide <- city_deer_mesh_land %>%
 city_deer_risk <- city_mesh %>%
   # 将鹿数据映射到底图上。
   left_join(st_drop_geometry(jp_deer), by = "mesh") %>%
-  # 漏洞：原数据12920行中，116行鹿密度为0，4885行鹿密度为NA。根据数据说明，NA来源于3种情况：令和2年调查结果数量为0；森林面积为0；密度不足。因此，此处将NA都作为0处理。
-  mutate(d_2022 = case_when(is.na(d_2022) ~ 0, TRUE ~ d_2022)) %>%
   # 加入人口数据。
   left_join(city_pop, by = "mesh") %>%
   # 加入农田和森林数据。
   left_join(city_deer_mesh_land_wide, by = "mesh") %>%
+  # 数据缺值补充。
+  mutate(
+    # 漏洞：原数据12920行中，116行鹿密度为0，4885行鹿密度为NA。根据数据说明，NA来源于3种情况：令和2年调查结果数量为0；森林面积为0；密度不足。因此，此处将NA都作为0处理。不过对于北海道而言，并非没有风险，而是没有调查数据。
+    d_2022 = case_when(is.na(d_2022) ~ 0, TRUE ~ d_2022),
+    # 漏洞：人口数据缺失值通常意味着对应mesh内无常住人口，因此作为0处理。
+    pop_2015 = case_when(is.na(pop_2015) ~ 0, TRUE ~ pop_2015)
+  ) %>%
+  # 计算风险值。
   mutate(
     risk_human = d_2022 * pop_2015,
     risk_agr = d_2022 * lu_0100,
     risk_forest = d_2022 * lu_0500
-  )
+  ) %>%
+  # 漏洞：应该在最开始去除札幌。
+  filter(city != "札幌市")
+# 漏洞：需要确保数值无缺。
+apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
 # Analysis ----
+## General ----
 # 各城市网格内鹿的数量。
 mapview(city_deer, zcol = "d_2022")
 
+## Risk ----
 # 各城市各网格的各种风险。
-mapview(city_deer_risk, zcol = "risk_human")
+mapview(city_deer_risk %>% select(mesh, risk_human), zcol = "risk_human")
+mapview(city_deer_risk %>% select(mesh, risk_agr), zcol = "risk_agr")
+mapview(city_deer_risk %>% select(mesh, risk_forest), zcol = "risk_forest")
+# 漏洞：如果城市的所有mesh的所有风险都为0，那么应该去掉。
+city_deer_risk %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  ggplot(aes(city, risk_val)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.3, col = "lightblue") +
+  facet_wrap(.~ risk_cat, scales = "free", ncol = 1)
 
 # 不同风险之间的关系。
 ggplot(st_drop_geometry(city_deer_risk)) +
@@ -178,6 +206,7 @@ st_drop_geometry(city_deer_risk) %>%
   geom_point(aes(size = risk_human), alpha = 0.3) +
   geom_text(aes(label = city), vjust = -1, size = 2)
 
+## Habitat preference ----
 # 各城市鹿密度和人口及土地利用的关系。
 # 漏洞：有些城市基本没有数据。
 st_drop_geometry(city_deer_risk) %>%
@@ -193,3 +222,4 @@ st_drop_geometry(city_deer_risk) %>%
   geom_point(aes(land_prop, d_2022), alpha = 0.5) +
   geom_smooth(aes(land_prop, d_2022), method = "lm") +
   facet_grid(city ~ land_code, scales = "free")
+
