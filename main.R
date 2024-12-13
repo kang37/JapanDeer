@@ -194,7 +194,7 @@ city_deer_risk_tar %>%
   ) %>%
   ggplot(aes(city, risk_val)) +
   geom_boxplot() +
-  geom_jitter(alpha = 0.3, col = "lightblue") +
+  geom_jitter(alpha = 0.5, col = "pink") +
   facet_wrap(.~ risk_cat, scales = "free", ncol = 1) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
@@ -210,14 +210,14 @@ ggplot(st_drop_geometry(city_deer_risk_tar)) +
   geom_point(aes(risk_forest, risk_agr), alpha = 0.5) +
   facet_wrap(.~ city)
 
-# 各个城市的平均风险。
-# 漏洞：应该算平均值吗？NA值也尚未处理。
+# 各个城市的风险中位数。
+# 漏洞：应该算中位数吗？NA值也尚未处理。
 st_drop_geometry(city_deer_risk_tar) %>%
   group_by(city) %>%
   summarise(
-    risk_human = mean(risk_human, na.rm = TRUE),
-    risk_agr = mean(risk_agr, na.rm = TRUE),
-    risk_forest = mean(risk_forest, na.rm = TRUE)
+    risk_human = median(risk_human, na.rm = TRUE),
+    risk_agr = median(risk_agr, na.rm = TRUE),
+    risk_forest = median(risk_forest, na.rm = TRUE)
   ) %>%
   ggplot(aes(risk_forest, risk_agr)) +
   geom_point(aes(size = risk_human), alpha = 0.3) +
@@ -248,7 +248,7 @@ city_deer_risk_tar %>%
   ) %>%
   group_by(city, risk_cat) %>%
   summarise(
-    risk_mean = mean(risk_val), risk_gini = Gini(risk_val), .groups = "drop"
+    risk_mean = median(risk_val), risk_gini = Gini(risk_val), .groups = "drop"
   ) %>%
   ggplot() +
   geom_point(aes(city, risk_mean, size = risk_gini), alpha = 0.5) +
@@ -274,14 +274,25 @@ st_drop_geometry(city_deer_risk_tar) %>%
 
 # 计算鹿和人口密度、土地利用的关系。
 # 总体关系。
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$pop_2015)
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0100)
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0500)
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0600)
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0700)
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_0901)
-# 漏洞：河川很可能是因为河川占地越大，陆地越少，则鹿越少。
-cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar$lu_1100)
+lapply(
+  c(
+    "pop_2015", "lu_0100", "lu_0500", "lu_0600", "lu_0700", "lu_0901", "lu_1100"
+  ),
+  function(x) {
+    cor_res <- cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar[[x]])
+    return(c(x, cor_res$estimate, cor_res$p.value))
+  }
+) %>%
+  unlist() %>%
+  matrix(ncol = 3, byrow = TRUE) %>%
+  data.frame() %>%
+  rename_with(~ c("variable", "estimate", "p")) %>%
+  mutate(
+    p = as.numeric(p),
+    p_mark = case_when(
+      p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", p >= 0.05 ~ ""
+    )
+  )
 
 # 分城市统计。
 get_cor <- function(x) {
@@ -309,3 +320,14 @@ rbind(
   mutate(est = case_when(p < 0.05 ~ est, TRUE ~ NA)) %>%
   ggplot() +
   geom_tile(aes(city, grp, fill = c(est > 0)), col = "white")
+
+# Export ----
+# 各个变量中位数。
+city_deer_risk_tar %>%
+  st_drop_geometry() %>%
+  group_by(city) %>%
+  summarise(
+    across(d_2022:risk_forest, median, .names = "{.col}_mid"),
+    across(risk_human:risk_forest, Gini, .names = "{.col}_gini")
+  ) %>%
+  write.csv(paste0("data_proc/city_deer_risk_tar_", Sys.Date(), ".csv"))
