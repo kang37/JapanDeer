@@ -1,0 +1,194 @@
+---
+title: "Urban deer study"
+author: "Kang"
+format: html
+editor: visual
+execute: 
+  echo: false
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+#| echo: false
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## 引言
+
+本报告展示了两部分主要信息：各个城市里鹿所造成的各种潜在风险，包括人兽冲突风险、农田风险、森林风险；鹿的栖息地选择偏好。
+
+## 方法
+
+### 数据
+
+1.  日本鹿调查mesh数据，包含了日本大部分地区（不含北海道）各5千米网格内鹿的密度（单位：头/平方千米）。时间为2014-2022年，本研究采用的是2022年，但是我在考虑改用2015或2016年的数据，因为跟人口的和土地利用时间的数据比较接近。不过这样会有另一个问题，就是离现在有点久。最好还是能够找到2022年左右的人口网格和土地利用网格数据。
+2.  日本人口mesh数据，包含了日本多个500米网格内的人口数量，时间为2015年，2015年之后有若干年份的推算人口。
+3.  土地利用mesh数据，覆盖日本全境100米网格分辨率的土地利用，土地利用类型包括农田、森林、荒地、水体等，时间为2016年。
+4.  城市边界多边形数据。
+
+### 提取
+
+1.  提取出目标城市边界。目标城市是不含札幌在内点19个政令指定都市。所谓政令指定都市，是指人口较多的城市，具体定义可以网上查。
+2.  提取目标城市边界内的5千米方格。由于城市边缘是不规则的，因此城市边缘的网格会被裁切，删除裁切后只剩下一小部分的网格。例如，对于一个城市，我们会保留所有大的网格，一个完整的网格面积约为25平方千米（由于地理投影变形等原因，并不会都刚好是25平方千米）。但如果边缘有个网格被裁切后只剩下2平方千米，那这个网格的重要性就没那么高了，因此直接把它删除。
+3.  提取目标城市网格的鹿密度数据。每个城市中鹿调查的网格并非涵盖整个城市，根据数据说明，以下三种情况的地方不属于调查范围：令和2年调查结果中没有发现鹿；无森林覆盖；调查结果鹿密度极低的（第三条我不确定是否理解正确）。因此，对于鹿数据中为缺失值的网格或城市中未被调查的网格，均假设其鹿密度为0。
+4.  提取目标城市网格的人口数据。每个城市5千米网格的人口是其所包含多个人口500米网格的和。
+5.  计算目标城市网格的土地利用比例。每个城市5千米网格包含多个100米土地利用网格，分类计算各种土地利用的比例。
+6.  计算风险。经过上面的步骤，对于每个城市网格，我们有鹿密度、人口、各类土地利用比例，则各种风险计算如下：人兽冲突潜在风险 = 人口 x 鹿密度，农田风险 = 农田比例 x 鹿密度，森林风险 = 森林比例 x 鹿密度。如果有更合理的指标计算方式，可以进一步替换。
+7.  分析潜在风险。现在我们有每个城市网格的各类风险值，可以进行以下分析：风险之间的关系，各个城市的平均风险及其排名，各个城市内的风险不平等性等。
+8.  删除风险均为0的城市。有些城市（如新泻），鹿调查结果均为缺失值或者0，则风险计算结果均为0，将这些城市去除。
+9.  栖息地偏好。鹿的密度可能和人口密度及土地利用有关，此处，虽然土地利用有多种类别（如下图），但我只选取了感兴趣的几种类别进行分析，期待的结果是：农田、森林、水体和鹿密度可能正相关，建筑、道路等和鹿密度可能呈负相关，但是实际结果和期待结果并不完全一致。
+
+## 描述分析
+
+各个城市鹿的数量如下。
+
+```{r}
+mapview(city_deer_risk_tar %>% select(city, d_2022), zcol = "d_2022", layer.name = "鹿密度")
+```
+
+分图来看的话如下。
+
+```{r}
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "d_2022") + 
+  tm_facets(by = "city")
+```
+
+各个网格人口数量如下。
+
+```{r}
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "pop_2015") + 
+  tm_facets(by = "city")
+```
+
+各个网格农田占比如下。
+
+```{r}
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "lu_0100") + 
+  tm_facets(by = "city")
+```
+
+各个网格森林占比如下。
+
+```{r}
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "lu_0500") + 
+  tm_facets(by = "city")
+```
+
+## 风险分析
+
+各类风险可视化如下，依序为人兽冲突潜在风险、农田风险、森林风险。
+
+```{r}
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "risk_human") + 
+  tm_facets(by = "city")
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "risk_agr") + 
+  tm_facets(by = "city")
+tm_shape(city_deer_risk_tar) + 
+  tm_polygons(col = "risk_forest") + 
+  tm_facets(by = "city")
+```
+
+横向对比如下。
+
+```{r fig.height=10}
+city_deer_risk_tar %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  ggplot(aes(city, risk_val)) +
+  geom_boxplot() +
+  geom_jitter(alpha = 0.5, col = "pink") +
+  facet_wrap(.~ risk_cat, scales = "free", ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+各个城市的风险中位数如下图，这里主要关注风险比较大的城市。可见京都市各类风险都比较高（大论文成功聚焦到京都市！）。
+
+```{r}
+st_drop_geometry(city_deer_risk_tar) %>%
+  group_by(city) %>%
+  summarise(
+    risk_human = median(risk_human, na.rm = TRUE),
+    risk_agr = median(risk_agr, na.rm = TRUE),
+    risk_forest = median(risk_forest, na.rm = TRUE)
+  ) %>%
+  ggplot(aes(risk_forest, risk_agr)) +
+  geom_point(aes(size = risk_human), alpha = 0.3) +
+  geom_text(aes(label = city), vjust = -1, size = 3)
+```
+
+对于各个城市，不仅关注总的风险级别，还可以关注风险的空间分布。有些城市可能风险分布比较均匀，有些可能只有局部地区受害。此处我用基尼系数（之前文本分析的时候用过，原本是用于衡量收入不平等的）计算了每个城市内各个网格风险的平等程度。把基尼系数加入上面那个图，结果如下。
+
+```{r}
+city_deer_risk_tar %>%
+  st_drop_geometry() %>%
+  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  pivot_longer(
+    cols = c("risk_human", "risk_agr", "risk_forest"),
+    names_to = "risk_cat", values_to = "risk_val"
+  ) %>%
+  group_by(city, risk_cat) %>%
+  summarise(
+    risk_mean = median(risk_val), risk_gini = Gini(risk_val), .groups = "drop"
+  ) %>%
+  ggplot() +
+  geom_point(aes(city, risk_mean, size = risk_gini), alpha = 0.5) +
+  facet_wrap(.~ risk_cat, ncol = 1, scales = "free") +
+  theme_bw()
+```
+
+会把各个城市的网格数量、风险中位数、基尼系数的数据导出给你。
+
+## 栖息地偏好
+
+基于所有网格数据，对每网格鹿密度和其他因素进行相关性分析，结果如下。大部分符合预期，但是其中：河川很可能是因为河川占地越大，陆地越少，则鹿越少。
+
+```{r}
+lapply(
+  c(
+    "pop_2015", "lu_0100", "lu_0500", "lu_0600", "lu_0700", "lu_0901", "lu_1100"
+  ), 
+  function(x) {
+    cor_res <- cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar[[x]])
+    return(c(x, cor_res$estimate, cor_res$p.value))
+  }
+) %>% 
+  unlist() %>% 
+  matrix(ncol = 3, byrow = TRUE) %>% 
+  data.frame() %>% 
+  rename_with(~ c("variable", "estimate", "p")) %>% 
+  mutate(
+    p = as.numeric(p), 
+    p_mark = case_when(
+      p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", p >= 0.05 ~ ""
+    )
+  )
+```
+
+如果分城市，对每个城市进行各网格鹿密度和其他因素对相关分析，结果如下。
+
+```{r}
+rbind(
+  get_cor(pop_2015) %>% mutate(grp = "pop_2015"),
+  get_cor(lu_0100) %>% mutate(grp = "lu_0100"),
+  get_cor(lu_0500) %>% mutate(grp = "lu_0500"),
+  get_cor(lu_0600) %>% mutate(grp = "lu_0600"),
+  get_cor(lu_0700) %>% mutate(grp = "lu_0700"),
+  get_cor(lu_0901) %>% mutate(grp = "lu_0901"),
+  get_cor(lu_1100) %>% mutate(grp = "lu_1100")
+) %>%
+  mutate(est = case_when(p < 0.05 ~ est, TRUE ~ NA)) %>%
+  ggplot() +
+  geom_tile(aes(city, grp, fill = c(est > 0)), col = "white")
+```
