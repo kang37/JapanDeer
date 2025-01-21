@@ -44,12 +44,14 @@ jp_deer <-
 
 ## Population ----
 # 各mesh人口数据。
-city_pop <- list.files("data_raw/MeshPop") %>%
-  lapply(function(x) st_read(paste0("data_raw/MeshPop/", x))) %>%
+city_pop <- list.files("data_raw/mesh_pop_100m") %>%
+  .[!grepl("zip", .)] %>%
+  lapply(function(x) st_read(paste0("data_raw/mesh_pop_100m/", x))) %>%
   bind_rows() %>%
   # 转为普通数据框。
   st_drop_geometry() %>%
-  select(mesh_8d = MESH_ID, pop_2015 = PTN_2015) %>%
+  mutate(mesh_8d = substr(MESH_CODE, 1, 8), pop_2020 = PopT) %>%
+  select(mesh_8d, pop_2020) %>%
   # 构建7位数mesh编号。
   mutate(
     mesh_6d = substr(mesh_8d, 1, 6),
@@ -67,7 +69,7 @@ city_pop <- list.files("data_raw/MeshPop") %>%
   group_by(mesh) %>%
   summarise(
     mesh_8d_num = n(),
-    pop_2015 = sum(pop_2015, na.rm = TRUE),
+    pop_2020 = sum(pop_2020, na.rm = TRUE),
     .groups = "drop"
   )
 
@@ -145,11 +147,11 @@ city_deer_risk <- city_mesh %>%
     # 漏洞：原数据12920行中，116行鹿密度为0，4885行鹿密度为NA。根据数据说明，NA来源于3种情况：令和2年调查结果数量为0；森林面积为0；密度不足。因此，此处将NA都作为0处理。不过对于北海道而言，并非没有风险，而是没有调查数据。
     d_2022 = case_when(is.na(d_2022) ~ 0, TRUE ~ d_2022),
     # 漏洞：人口数据缺失值通常意味着对应mesh内无常住人口，因此作为0处理。
-    pop_2015 = case_when(is.na(pop_2015) ~ 0, TRUE ~ pop_2015)
+    pop_2020 = case_when(is.na(pop_2020) ~ 0, TRUE ~ pop_2020)
   ) %>%
   # 计算风险值。
   mutate(
-    risk_human = d_2022 * pop_2015,
+    risk_human = d_2022 * pop_2020,
     risk_agr = d_2022 * lu_0100,
     risk_forest = d_2022 * lu_0500
   )
@@ -260,8 +262,8 @@ city_deer_risk_tar %>%
 # 漏洞：有些城市基本没有数据。
 st_drop_geometry(city_deer_risk_tar) %>%
   ggplot() +
-  geom_point(aes(pop_2015, d_2022), alpha = 0.5) +
-  geom_smooth(aes(pop_2015, d_2022), method = "lm") +
+  geom_point(aes(pop_2020, d_2022), alpha = 0.5) +
+  geom_smooth(aes(pop_2020, d_2022), method = "lm") +
   facet_wrap(.~ city, scales = "free")
 # 漏洞：看不清图。
 st_drop_geometry(city_deer_risk_tar) %>%
@@ -276,7 +278,7 @@ st_drop_geometry(city_deer_risk_tar) %>%
 # 总体关系。
 lapply(
   c(
-    "pop_2015", "lu_0100", "lu_0500", "lu_0600", "lu_0700", "lu_0901", "lu_1100"
+    "pop_2020", "lu_0100", "lu_0500", "lu_0600", "lu_0700", "lu_0901", "lu_1100"
   ),
   function(x) {
     cor_res <- cor.test(city_deer_risk_tar$d_2022, city_deer_risk_tar[[x]])
@@ -309,7 +311,7 @@ get_cor <- function(x) {
     )
 }
 rbind(
-  get_cor(pop_2015) %>% mutate(grp = "pop_2015"),
+  get_cor(pop_2020) %>% mutate(grp = "pop_2020"),
   get_cor(lu_0100) %>% mutate(grp = "lu_0100"),
   get_cor(lu_0500) %>% mutate(grp = "lu_0500"),
   get_cor(lu_0600) %>% mutate(grp = "lu_0600"),
