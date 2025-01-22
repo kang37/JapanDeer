@@ -77,11 +77,11 @@ city_pop <- list.files("data_raw/mesh_pop_100m") %>%
 # 读取土地利用mesh数据，并且提取7位mesh编号。
 read_land <- function(dsn_x) {
   st_read(
-    paste0("data_raw/LandUse/", dsn_x),
+    paste0("data_raw/LandUse2021/", dsn_x),
     options = "ENCODING=Shift-JIS"
   ) %>%
     rename(
-      "mesh_10d" = "メッシュ", "land_code" = "土地利用種", date = "撮影年月日"
+      "mesh_10d" = "L03b_001", "land_code" = "L03b_002", date = "L03b_003"
     ) %>%
     # 构造7位数mesh：在6位数mesh基础上增加第7位。第7位数字由原10位数mesh的第7和第8位数字决定。
     mutate(
@@ -101,7 +101,7 @@ read_land <- function(dsn_x) {
 
 # 读取所有土地利用数据。
 jp_land <- lapply(
-  list.files("data_raw/LandUse/"),
+  list.files("data_raw/LandUse2021/"),
   read_land
 ) %>%
   bind_rows()
