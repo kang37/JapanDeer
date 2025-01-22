@@ -333,3 +333,4 @@ city_deer_risk_tar %>%
     across(risk_human:risk_forest, Gini, .names = "{.col}_gini")
   ) %>%
   write.csv(paste0("data_proc/city_deer_risk_tar_", Sys.Date(), ".csv"))
+
