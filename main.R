@@ -39,8 +39,20 @@ city_mesh <-
 
 # 读取日本鹿分布数据。
 jp_deer <-
+  # GIS数据。
   st_read(dsn = "data_raw/japan_deer", layer = "生息密度2022") %>%
-  mutate(mesh = as.character(mesh))
+  mutate(mesh = as.character(mesh)) %>%
+  left_join(
+    # 添加Excel表格中的历年鹿数据。
+    read.csv("data_raw/japan_deer/2014_2022年度全国推定生息密度.csv") %>%
+      tibble() %>%
+      select(contains("メッシュ"), contains("2015"), contains("2021")) %>%
+      rename_with(~ c("mesh", "d_2015", "d_2021")) %>%
+      mutate(mesh = as.character(mesh)),
+    by = "mesh"
+  ) %>%
+  # 删除无数据网格。
+  filter(!is.na(d_2015) | !is.na(d_2021) | !is.na(d_2022))
 
 ## Population ----
 # 各mesh人口数据。
