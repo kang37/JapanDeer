@@ -5,6 +5,7 @@ library(mapview)
 library(tmap)
 library(tidyr)
 library(ggplot2)
+library(ggrepel)
 library(DescTools)
 library(showtext)
 showtext_auto()
@@ -25,7 +26,7 @@ city <- st_read("data_raw/JapanAdmin2022", "N03-22_220101") %>%
   summarise(geometry = st_union(geometry), .groups = "drop") %>%
   st_transform(crs = 6690)
 
-# 读取日本空mesh数据作为底图，并进行裁切和筛选。
+# 读取日本空5千米mesh数据作为底图，并进行裁切和筛选。
 city_mesh <-
   st_intersection(
     city, st_read("data_raw/mesh5") %>% st_transform(crs = 6690)
@@ -56,14 +57,14 @@ jp_deer <-
 
 ## Population ----
 # 各mesh人口数据。
-city_pop <- list.files("data_raw/mesh_pop_100m") %>%
+city_pop <- list.files("data_raw/Mesh100Pop2020") %>%
   .[!grepl("zip", .)] %>%
-  lapply(function(x) st_read(paste0("data_raw/mesh_pop_100m/", x))) %>%
+  lapply(function(x) st_read(paste0("data_raw/Mesh100Pop2020/", x))) %>%
   bind_rows() %>%
   # 转为普通数据框。
   st_drop_geometry() %>%
-  mutate(mesh_8d = substr(MESH_CODE, 1, 8), pop_2020 = PopT) %>%
-  select(mesh_8d, pop_2020) %>%
+  mutate(mesh_8d = substr(MESH_CODE, 1, 8), pop = PopT) %>%
+  select(mesh_8d, pop) %>%
   # 构建7位数mesh编号。
   mutate(
     mesh_6d = substr(mesh_8d, 1, 6),
@@ -81,20 +82,53 @@ city_pop <- list.files("data_raw/mesh_pop_100m") %>%
   group_by(mesh) %>%
   summarise(
     mesh_8d_num = n(),
-    pop_2020 = sum(pop_2020, na.rm = TRUE),
+    pop = sum(pop, na.rm = TRUE),
     .groups = "drop"
-  )
+  ) %>%
+  mutate(stage = 2)
+# 2015年各网格人口数据。
+city_pop_2015 <- list.files("data_raw/Mesh100Pop2015") %>%
+  .[!grepl("zip", .)] %>%
+  lapply(function(x) st_read(paste0("data_raw/Mesh100Pop2015/", x))) %>%
+  bind_rows() %>%
+  # 转为普通数据框。
+  st_drop_geometry() %>%
+  # Bug: Name "Meshcode" in following code is different from above 2021 data.
+  mutate(mesh_8d = substr(Meshcode, 1, 8), pop = PopT) %>%
+  select(mesh_8d, pop) %>%
+  # 构建7位数mesh编号。
+  mutate(
+    mesh_6d = substr(mesh_8d, 1, 6),
+    mesh_10d_7 = substr(mesh_8d, 7, 7),
+    mesh_10d_8 = substr(mesh_8d, 8, 8),
+    mesh_7d_7 = case_when(
+      mesh_10d_7 <= 4 & mesh_10d_8 <= 4 ~ 1,
+      mesh_10d_7 <= 4 & mesh_10d_8 >= 5 ~ 2,
+      mesh_10d_7 >= 5 & mesh_10d_8 <= 4 ~ 3,
+      mesh_10d_7 >= 5 & mesh_10d_8 >= 5 ~ 4
+    ),
+    mesh = paste0(mesh_6d, mesh_7d_7)
+  ) %>%
+  # 分组计算每个7位数mesh的总人口密度。每个7位数mesh应包含25个8位数mesh，若一个7位数mesh内含8位数mesh不满25个，意味着无人口mesh的地方常住人口为0。
+  group_by(mesh) %>%
+  summarise(
+    mesh_8d_num = n(),
+    pop = sum(pop, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(stage = 1)
+# 合并人口数据。
+city_pop <- rbind(city_pop_2015, city_pop_2020)
+rm(city_pop_2015, city_pop_2020)
 
 ## Land ----
 # 读取土地利用mesh数据，并且提取7位mesh编号。
-read_land <- function(dsn_x) {
+read_land <- function(year_x, dsn_x) {
   st_read(
-    paste0("data_raw/LandUse2021/", dsn_x),
+    paste0("data_raw/LandUse", year_x, "/", dsn_x),
     options = "ENCODING=Shift-JIS"
   ) %>%
-    rename(
-      "mesh_10d" = "L03b_001", "land_code" = "L03b_002", date = "L03b_003"
-    ) %>%
+    rename_with(~ c("mesh_10d", "land_code", "date"), .cols = -geometry) %>%
     # 构造7位数mesh：在6位数mesh基础上增加第7位。第7位数字由原10位数mesh的第7和第8位数字决定。
     mutate(
       mesh_6d = substr(mesh_10d, 1, 6),
@@ -111,12 +145,27 @@ read_land <- function(dsn_x) {
     st_drop_geometry()
 }
 
-# 读取所有土地利用数据。
-jp_land <- lapply(
+# 读取2021年所有土地利用数据。
+jp_land_2021 <- lapply(
   list.files("data_raw/LandUse2021/"),
-  read_land
+  read_land, year_x = 2021
 ) %>%
   bind_rows()
+
+# 读取2016年所有土地利用数据：需要10分钟。
+jp_land_2016 <- lapply(
+  list.files("data_raw/LandUse2016/"),
+  read_land, year_x = 2016
+) %>%
+  bind_rows()
+
+# 合并两个年份的土地利用数据。
+jp_land <- rbind(
+  jp_land_2016 %>% mutate(year = 2016, stage = 1),
+  jp_land_2021 %>% mutate(year = 2021, stage = 2)
+)
+rm(jp_land_2016)
+rm(jp_land_2021)
 
 # 计算各城市每个mesh中各类目标土地利用的比例。
 city_deer_mesh_land <- city_mesh %>%
@@ -126,11 +175,11 @@ city_deer_mesh_land <- city_mesh %>%
   # 漏洞：应该用inner_join还是left_join呢？
   inner_join(jp_land, by = "mesh") %>%
   # 每个mesh中包含多少个mesh_10d。
-  group_by(mesh) %>%
+  group_by(stage, mesh) %>%
   mutate(mesh_10d_num = n()) %>%
   ungroup() %>%
   # 每个mesh中各类土地利用mesh的数量。
-  group_by(mesh, mesh_10d_num, land_code) %>%
+  group_by(stage, mesh, mesh_10d_num, land_code) %>%
   summarise(
     land_mesh_10d_num = n(),
     .groups = "drop"
@@ -141,7 +190,7 @@ city_deer_mesh_land <- city_mesh %>%
 city_deer_mesh_land_wide <- city_deer_mesh_land %>%
   mutate(land_code = paste0("lu_", land_code)) %>%
   pivot_wider(
-    id_cols = "mesh", names_from = "land_code",
+    id_cols = c("stage", "mesh"), names_from = "land_code",
     values_from = "land_prop", values_fill = 0
   )
 
@@ -149,23 +198,30 @@ city_deer_mesh_land_wide <- city_deer_mesh_land %>%
 # 人-鹿潜在冲突。
 city_deer_risk <- city_mesh %>%
   # 将鹿数据映射到底图上。
-  left_join(st_drop_geometry(jp_deer), by = "mesh") %>%
+  left_join(
+    st_drop_geometry(jp_deer) %>%
+      select(mesh, d_2015, d_2021) %>%
+      rename_with(~ gsub("d_", "", .x)) %>%
+      pivot_longer(cols = c("2015", "2021"), names_to = "year", values_to = "deer") %>%
+      mutate(stage = case_when(year == "2015" ~ 1, year == "2021" ~ 2)),
+    by = "mesh"
+  ) %>%
   # 加入人口数据。
-  left_join(city_pop, by = "mesh") %>%
+  left_join(city_pop, by = c("stage", "mesh")) %>%
   # 加入农田和森林数据。
-  left_join(city_deer_mesh_land_wide, by = "mesh") %>%
+  left_join(city_deer_mesh_land_wide, by = c("stage", "mesh")) %>%
   # 数据缺值补充。
   mutate(
     # 漏洞：原数据12920行中，116行鹿密度为0，4885行鹿密度为NA。根据数据说明，NA来源于3种情况：令和2年调查结果数量为0；森林面积为0；密度不足。因此，此处将NA都作为0处理。不过对于北海道而言，并非没有风险，而是没有调查数据。
-    d_2022 = case_when(is.na(d_2022) ~ 0, TRUE ~ d_2022),
+    deer = case_when(is.na(deer) ~ 0, TRUE ~ deer),
     # 漏洞：人口数据缺失值通常意味着对应mesh内无常住人口，因此作为0处理。
-    pop_2020 = case_when(is.na(pop_2020) ~ 0, TRUE ~ pop_2020)
+    pop = case_when(is.na(pop) ~ 0, TRUE ~ pop)
   ) %>%
   # 计算风险值。
   mutate(
-    risk_human = d_2022 * pop_2020,
-    risk_agr = d_2022 * lu_0100,
-    risk_forest = d_2022 * lu_0500
+    risk_human = deer * pop,
+    risk_agr = deer * lu_0100,
+    risk_forest = deer * lu_0500
   )
 # 漏洞：需要确保数值无缺。
 apply(city_deer_risk, 2, function(x) sum(is.na(x)))
@@ -191,7 +247,8 @@ city_deer_risk_tar <- city_deer_risk %>%
 # Analysis ----
 ## General ----
 # 各城市网格内鹿的数量。
-mapview(city_deer_risk_tar, zcol = "d_2022")
+mapview(city_deer_risk_tar %>% filter(stage == 1), zcol = "deer")
+mapview(city_deer_risk_tar %>% filter(stage == 2), zcol = "deer")
 
 ## Risk ----
 # 各城市各网格的各种风险。
@@ -201,33 +258,39 @@ mapview(city_deer_risk_tar %>% select(mesh, risk_forest), zcol = "risk_forest")
 # 漏洞：如果城市的所有mesh的所有风险都为0，那么应该去掉。
 city_deer_risk_tar %>%
   st_drop_geometry() %>%
-  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  select("stage", "city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  # Bug: What to filt?
+  filter(!is.na(stage)) %>%
   pivot_longer(
     cols = c("risk_human", "risk_agr", "risk_forest"),
     names_to = "risk_cat", values_to = "risk_val"
   ) %>%
-  ggplot(aes(city, risk_val)) +
+  # Bug: What to filt?
+  filter(risk_val < 5000000) %>%
+  ggplot(aes(city, risk_val, col = as.character(stage))) +
   geom_boxplot() +
-  geom_jitter(alpha = 0.5, col = "pink") +
-  facet_wrap(.~ risk_cat, scales = "free", ncol = 1) +
+  geom_jitter(alpha = 0.2, col = "grey") +
+  facet_wrap(~ risk_cat, scales = "free", ncol = 1) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
 
 # 不同风险之间的关系。
 ggplot(st_drop_geometry(city_deer_risk_tar)) +
-  geom_point(aes(risk_human, risk_forest), alpha = 0.5) +
+  geom_point(aes(risk_human, risk_forest, col = as.factor(stage)), alpha = 0.5) +
   facet_wrap(.~ city)
 ggplot(st_drop_geometry(city_deer_risk_tar)) +
-  geom_point(aes(risk_human, risk_agr), alpha = 0.5) +
+  geom_point(aes(risk_human, risk_agr, col = as.factor(stage)), alpha = 0.5) +
   facet_wrap(.~ city)
 ggplot(st_drop_geometry(city_deer_risk_tar)) +
-  geom_point(aes(risk_forest, risk_agr), alpha = 0.5) +
+  geom_point(aes(risk_forest, risk_agr, col = as.factor(stage)), alpha = 0.5) +
   facet_wrap(.~ city)
 
 # 各个城市的风险中位数。
 # 漏洞：应该算中位数吗？NA值也尚未处理。
 st_drop_geometry(city_deer_risk_tar) %>%
-  group_by(city) %>%
+  # Bug.
+  filter(!is.na(stage)) %>%
+  group_by(stage, city) %>%
   summarise(
     risk_human = median(risk_human, na.rm = TRUE),
     risk_agr = median(risk_agr, na.rm = TRUE),
@@ -235,21 +298,24 @@ st_drop_geometry(city_deer_risk_tar) %>%
   ) %>%
   ggplot(aes(risk_forest, risk_agr)) +
   geom_point(aes(size = risk_human), alpha = 0.3) +
-  geom_text(aes(label = city), vjust = -1, size = 2)
+  geom_text_repel(aes(label = city), size = 2) +
+  facet_wrap(.~ stage)
 
 ## Gini ----
 city_deer_risk_tar %>%
   st_drop_geometry() %>%
-  select("city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+  # Bug.
+  filter(!is.na(stage)) %>%
+  select("stage", "city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
   pivot_longer(
     cols = c("risk_human", "risk_agr", "risk_forest"),
     names_to = "risk_cat", values_to = "risk_val"
   ) %>%
-  group_by(city, risk_cat) %>%
+  group_by(stage, city, risk_cat) %>%
   summarise(risk_gini = Gini(risk_val), .groups = "drop") %>%
   ggplot() +
   geom_col(aes(city, risk_gini)) +
-  facet_wrap(.~ risk_cat, ncol = 1, scales = "free")
+  facet_grid(risk_cat ~ stage, scales = "free")
 
 ## Gini and average risk ----
 # 漏洞：和上面的重复了。
@@ -334,6 +400,47 @@ rbind(
   mutate(est = case_when(p < 0.05 ~ est, TRUE ~ NA)) %>%
   ggplot() +
   geom_tile(aes(city, grp, fill = c(est > 0)), col = "white")
+
+## Change rate ----
+# 每个网格的变化率。
+# Bug: 应该挪到前面。
+city_deer_risk_tar_rate <-
+  # Bug：应该用空网格来叠加。
+  city_deer_risk_tar %>%
+  select(mesh, geometry) %>%
+  left_join(
+    city_deer_risk_tar %>%
+      st_drop_geometry() %>%
+      select(stage, city, mesh, risk_human, risk_agr, risk_forest) %>%
+      pivot_longer(
+        cols = c(risk_human, risk_agr, risk_forest),
+        names_to = "risk_cat", values_to = "risk_val"
+      ) %>%
+      # Bug.
+      filter(!is.na(stage)) %>%
+      pivot_wider(
+        id_cols = c(city, mesh, risk_cat),
+        names_from = stage, values_from = risk_val, names_prefix = "stage_"
+      ) %>%
+      mutate(chg_rate = (stage_2 - stage_1) / stage_1),
+    by = "mesh"
+  )
+
+# 各个城市的增长率。
+city_deer_risk_tar_rate %>%
+  st_drop_geometry() %>%
+  # Bug.
+  filter(!is.na(chg_rate)) %>%
+  ggplot(aes(city, chg_rate)) +
+  geom_boxplot() +
+  geom_point(alpha = 0.3) +
+  facet_wrap(.~ risk_cat, ncol = 1) +
+  theme(axis.text.x = element_text(angle = 90))
+
+# 增长率的空间分布。
+tm_shape(city_deer_risk_tar_rate) +
+  tm_polygons(col = "chg_rate") +
+  tm_facets(by = "city", along = "risk_cat")
 
 # Export ----
 # 各个变量中位数。
