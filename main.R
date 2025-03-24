@@ -263,33 +263,40 @@ risk_boxplot <- function(risk_name, y_name) {
   risk_boxplot("risk_agr", "Agri-deer\nrisk") +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
+# 标准化数值作图。
+(
+  risk_boxplot("risk_human_scale", "Human-deer\nrisk") +
+    coord_cartesian(ylim = c(0, 0.1)) +
+    theme(axis.text.x = element_blank())
+) / (
+  risk_boxplot("risk_agr_scale", "Agri-deer\nrisk") +
+    theme(axis.text.x = element_blank())
+) /
+  risk_boxplot("risk_forest_scale", "Forest-deer\nrisk") +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "bottom")
 
-# 不同风险之间的关系。
-ggplot(st_drop_geometry(city_deer_risk)) +
-  geom_point(aes(risk_human, risk_forest, col = as.factor(stage)), alpha = 0.5) +
-  facet_wrap(.~ city)
-ggplot(st_drop_geometry(city_deer_risk)) +
-  geom_point(aes(risk_human, risk_agr, col = as.factor(stage)), alpha = 0.5) +
-  facet_wrap(.~ city)
-ggplot(st_drop_geometry(city_deer_risk)) +
-  geom_point(aes(risk_forest, risk_agr, col = as.factor(stage)), alpha = 0.5) +
-  facet_wrap(.~ city)
-
-# 各个城市的风险中位数。
+# 各个城市的风险中位数、平均值、基尼系数。
 # 漏洞：应该算中位数吗？NA值也尚未处理。
-st_drop_geometry(city_deer_risk) %>%
+risk_smry <-
+  st_drop_geometry(city_deer_risk) %>%
   # Bug.
   filter(!is.na(stage)) %>%
-  group_by(stage, city) %>%
+  group_by(stage, city_en) %>%
   summarise(
-    risk_human = median(risk_human, na.rm = TRUE),
-    risk_agr = median(risk_agr, na.rm = TRUE),
-    risk_forest = median(risk_forest, na.rm = TRUE)
-  ) %>%
-  ggplot(aes(risk_forest, risk_agr)) +
-  geom_point(aes(size = risk_human), alpha = 0.3) +
-  geom_text_repel(aes(label = city), size = 2) +
-  facet_wrap(.~ stage)
+    across(
+      c(risk_human, risk_agr, risk_forest),
+      ~ median(.x, na.rm = TRUE),
+      .names = "{.col}_mid"
+    ),
+    across(
+      c(risk_human, risk_agr, risk_forest),
+      ~ mean(.x, na.rm = TRUE),
+      .names = "{.col}_mean"
+    ),
+    .groups = "drop"
+  )
+
 
 ## Gini ----
 city_deer_risk %>%
