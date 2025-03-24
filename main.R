@@ -7,6 +7,7 @@ library(tidyr)
 library(ggplot2)
 library(ggrepel)
 library(patchwork)
+library(cowplot)
 library(DescTools)
 library(showtext)
 showtext_auto()
@@ -46,7 +47,11 @@ city_loc <- c(
     "city_jp", "city_en", "latitude", "longitude", "x_adj", "y_adj"
   )) %>%
   st_as_sf(coords = c("longitude", "latitude"), crs = st_crs(japan_boundary)) %>%
-  mutate(x_adj = as.numeric(x_adj), y_adj = as.numeric(y_adj))
+  mutate(
+    x_adj = as.numeric(x_adj),
+    y_adj = as.numeric(y_adj),
+    city_en = factor(city_en, levels = city_en)
+  )
 
 # 研究区域。
 jpeg(
@@ -78,12 +83,16 @@ tar_load(city_deer_mesh_land_wide)
 city_deer_risk <- rbind(
   city_mesh %>% mutate(stage = 1), city_mesh %>% mutate(stage = 2)
 ) %>%
+  # 加入城市英文名。
+  left_join(st_drop_geometry(city_loc), by = c("city" = "city_jp")) %>%
   # 将鹿数据映射到底图上。
   left_join(
     st_drop_geometry(jp_deer) %>%
       select(mesh, d_2015, d_2021) %>%
       rename_with(~ gsub("d_", "", .x)) %>%
-      pivot_longer(cols = c("2015", "2021"), names_to = "year", values_to = "deer") %>%
+      pivot_longer(
+        cols = c("2015", "2021"), names_to = "year", values_to = "deer"
+      ) %>%
       mutate(stage = case_when(year == "2015" ~ 1, year == "2021" ~ 2)) %>%
       select(-year),
     by = c("mesh", "stage")
@@ -105,7 +114,13 @@ city_deer_risk <- rbind(
     risk_human = deer * pop,
     risk_agr = deer * lu_0100,
     risk_forest = deer * lu_0500
-  )
+  ) %>%
+  # 计算风险标准化值。
+  mutate(across(
+    c(risk_human, risk_agr, risk_forest),
+    ~(. - min(.))/(max(.) - min(.)),
+    .names = "{.col}_scale"
+  ))
 # 漏洞：需要确保数值无缺。
 apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
@@ -115,34 +130,68 @@ apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
 ## Risk ----
 ### Map ----
+map_risk <- function(risk_scale_name, risk_name, stage_n) {
+  lapply(
+    unique(city_loc$city_en),
+    function(x) {
+      city_deer_risk %>%
+        filter(city_en == x, stage == stage_n) %>%
+        mutate(risk_scale = case_when(
+          get(risk_name) == 0 ~ NA, TRUE ~ get(risk_scale_name)
+        )) %>%
+        ggplot() +
+        geom_sf(aes(fill = risk_scale)) +
+        scale_fill_gradient(
+          low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
+        ) +
+        facet_wrap(.~ city_en) +
+        theme_bw() +
+        theme(
+          legend.position = "none",
+          axis.text = element_blank(),
+          axis.ticks = element_blank()
+        )
+    }
+  ) %>%
+    plot_grid(plotlist = ., nrow = 1)
+}
+
+jpeg(
+  filename = paste0("data_proc/map_risk_", Sys.Date(), ".jpg"),
+  res = 300, width = 4000, height = 2000
+)
+map_risk("risk_human_scale", "risk_human", 1) /
+  map_risk("risk_human_scale", "risk_human", 2)
+dev.off()
+
 lapply(
   unique(city_deer_risk$city),
   function(x) {
-    ggplot(city_deer_risk %>% filter(city == x)) +
-      geom_sf(aes(fill = risk_human)) +
-      facet_wrap(.~ city) +
-      theme_bw()
+    city_deer_risk %>%
+      filter(city == x) %>%
+      mutate(risk_human_scale = case_when(
+        risk_human == 0 ~ NA, TRUE ~ risk_human_scale
+      )) %>%
+      ggplot() +
+      geom_sf(aes(fill = risk_human_scale)) +
+      scale_fill_gradient(
+        low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
+      ) +
+      theme_bw() +
+      theme(legend.position = "none")
   }
 ) %>%
   cowplot::plot_grid(plotlist = .)
-ggplot(city_deer_risk) +
-  geom_sf(aes(fill = risk_human)) +
-  facet_wrap(.~ city) +
-  theme_bw()
 
 ### Box plot ----
 # Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
 city_deer_risk %>%
   st_drop_geometry() %>%
-  select("stage", "city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
-  # Bug: What to filt?
-  filter(!is.na(stage)) %>%
+  select("stage", "city", "mesh", "risk_human_scale", "risk_agr_scale", "risk_forest_scale") %>%
   pivot_longer(
-    cols = c("risk_human", "risk_agr", "risk_forest"),
+    cols = c("risk_human_scale", "risk_agr_scale", "risk_forest_scale"),
     names_to = "risk_cat", values_to = "risk_val"
   ) %>%
-  # Bug: What to filt?
-  filter(risk_val < 5000000) %>%
   ggplot(aes(city, risk_val, col = as.character(stage))) +
   geom_boxplot() +
   facet_wrap(~ risk_cat, scales = "free", ncol = 1) +
@@ -155,8 +204,9 @@ risk_boxplot <- function(risk_name, y_name) {
     st_drop_geometry() %>%
     ggplot() +
     # Bug: 早点把stage变成character比较好。
-    geom_boxplot(aes(city, get(risk_name), col = as.character(stage))) +
+    geom_boxplot(aes(city_en, get(risk_name), col = as.character(stage))) +
     theme_bw() +
+    theme(axis.text.x = element_text(angle = 90)) +
     labs(x = NULL, y = y_name, col = "Stage")
 }
 (
