@@ -60,16 +60,25 @@ apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 ## General ----
 # Bug: 研究区域作图。
 
-# 各城市网格内鹿的数量。
-mapview(city_deer_risk %>% filter(stage == 1), zcol = "deer")
-mapview(city_deer_risk %>% filter(stage == 2), zcol = "deer")
-
 ## Risk ----
-# 各城市各网格的各种风险。
-mapview(city_deer_risk %>% select(mesh, risk_human), zcol = "risk_human")
-mapview(city_deer_risk %>% select(mesh, risk_agr), zcol = "risk_agr")
-mapview(city_deer_risk %>% select(mesh, risk_forest), zcol = "risk_forest")
-# 漏洞：如果城市的所有mesh的所有风险都为0，那么应该去掉。
+### Map ----
+lapply(
+  unique(city_deer_risk$city),
+  function(x) {
+    ggplot(city_deer_risk %>% filter(city == x)) +
+      geom_sf(aes(fill = risk_human)) +
+      facet_wrap(.~ city) +
+      theme_bw()
+  }
+) %>%
+  cowplot::plot_grid(plotlist = .)
+ggplot(city_deer_risk) +
+  geom_sf(aes(fill = risk_human)) +
+  facet_wrap(.~ city) +
+  theme_bw()
+
+### Box plot ----
+# Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
 city_deer_risk %>%
   st_drop_geometry() %>%
   select("stage", "city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
