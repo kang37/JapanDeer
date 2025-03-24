@@ -294,25 +294,32 @@ risk_smry <-
       ~ mean(.x, na.rm = TRUE),
       .names = "{.col}_mean"
     ),
+    across(
+      c(risk_human, risk_agr, risk_forest),
+      ~ Gini(.x, na.rm = TRUE),
+      .names = "{.col}_gini"
+    ),
     .groups = "drop"
   )
 
-
-## Gini ----
-city_deer_risk %>%
-  st_drop_geometry() %>%
-  # Bug.
-  filter(!is.na(stage)) %>%
-  select("stage", "city", "mesh", "risk_human", "risk_agr", "risk_forest") %>%
+# 可视化基尼系数。
+risk_smry %>%
+  select(stage, city_en, risk_human_gini, risk_agr_gini, risk_forest_gini) %>%
   pivot_longer(
-    cols = c("risk_human", "risk_agr", "risk_forest"),
+    cols = c(risk_human_gini, risk_agr_gini, risk_forest_gini),
     names_to = "risk_cat", values_to = "risk_val"
   ) %>%
-  group_by(stage, city, risk_cat) %>%
-  summarise(risk_gini = Gini(risk_val), .groups = "drop") %>%
+  pivot_wider(names_from = stage, values_from = risk_val) %>%
   ggplot() +
-  geom_col(aes(city, risk_gini)) +
-  facet_grid(risk_cat ~ stage, scales = "free") +
+  geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
+  geom_point(
+    aes(city_en, `1`), fill = "lightgreen", col = "darkgreen", shape = 21
+  ) +
+  geom_point(
+    aes(city_en, `2`), fill = "pink", col = "red", shape = 21, alpha = 0.8
+  ) +
+  facet_grid(risk_cat ~.) +
+  theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
 
 ## Gini and average risk ----
