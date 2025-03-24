@@ -285,42 +285,46 @@ risk_smry <-
   group_by(stage, city_en) %>%
   summarise(
     across(
-      c(risk_human, risk_agr, risk_forest),
+      c(risk_human_scale, risk_agr_scale, risk_forest_scale),
       ~ median(.x, na.rm = TRUE),
       .names = "{.col}_mid"
     ),
     across(
-      c(risk_human, risk_agr, risk_forest),
+      c(risk_human_scale, risk_agr_scale, risk_forest_scale),
       ~ mean(.x, na.rm = TRUE),
       .names = "{.col}_mean"
     ),
     across(
-      c(risk_human, risk_agr, risk_forest),
+      c(risk_human_scale, risk_agr_scale, risk_forest_scale),
       ~ Gini(.x, na.rm = TRUE),
       .names = "{.col}_gini"
     ),
     .groups = "drop"
   )
 
-# 可视化基尼系数。
-risk_smry %>%
-  select(stage, city_en, risk_human_gini, risk_agr_gini, risk_forest_gini) %>%
-  pivot_longer(
-    cols = c(risk_human_gini, risk_agr_gini, risk_forest_gini),
-    names_to = "risk_cat", values_to = "risk_val"
-  ) %>%
-  pivot_wider(names_from = stage, values_from = risk_val) %>%
-  ggplot() +
-  geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
-  geom_point(
-    aes(city_en, `1`), fill = "lightgreen", col = "darkgreen", shape = 21
-  ) +
-  geom_point(
-    aes(city_en, `2`), fill = "pink", col = "red", shape = 21, alpha = 0.8
-  ) +
-  facet_grid(risk_cat ~.) +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90))
+# 可视化中位数、平均值、基尼系数的变化。
+segment_plt_smry <- function(smry_x) {
+  risk_smry %>%
+    select(stage, city_en, ends_with(smry_x)) %>%
+    pivot_longer(
+      cols = ends_with(smry_x), names_to = "risk_cat", values_to = "risk_val"
+    ) %>%
+    pivot_wider(names_from = stage, values_from = risk_val) %>%
+    ggplot() +
+    geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
+    geom_point(
+      aes(city_en, `1`), fill = "lightgreen", col = "darkgreen", shape = 21
+    ) +
+    geom_point(
+      aes(city_en, `2`), fill = "pink", col = "red", shape = 21, alpha = 0.8
+    ) +
+    facet_grid(risk_cat ~., scales = "free") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90))
+}
+segment_plt_smry("mid")
+segment_plt_smry("mean")
+segment_plt_smry("gini")
 
 ## Gini and average risk ----
 # 漏洞：和上面的重复了。
