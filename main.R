@@ -11,53 +11,46 @@ library(showtext)
 showtext_auto()
 
 # Data ----
-## Basic ----
-# 漏洞：各个图层的mesh位置不一致。鹿数据和土地利用几乎一致，mesh人口数据和空mesh一致，相对偏右下，且和geosense网站似乎一致。目前将所有数据都对齐到全日本空mesh数据上。
+"data_raw/Mesh100Pop2020"
 
-# 提取城市内的鹿数据：以指定都市为例。由于北海道无鹿调查数据，故不计入。
-city <- st_read("data_raw/JapanAdmin2022", "N03-22_220101") %>%
-  select(pref = N03_001, city = N03_003) %>%
-  filter(city %in% c(
-    "大阪市", "名古屋市", "京都市", "横浜市", "神戸市", "北九州市",
-    "川崎市", "福岡市", "広島市", "仙台市", "千葉市", "さいたま市",
-    "静岡市", "堺市", "新潟市", "浜松市", "岡山市", "相模原市", "熊本市"
-  )) %>%
-  group_by(pref, city) %>%
-  summarise(geometry = st_union(geometry), .groups = "drop") %>%
-  st_transform(crs = 6690)
+read_pop <- function(file_x, stage_x) {
+  list.files(paste0("data_raw/", file_x)) %>%
+    head() %>%
+    .[!grepl("zip", .)] %>%
+    lapply(function(x) st_read(paste0("data_raw/", file_x, "/", x))) %>%
+    bind_rows() %>%
+    # 转为普通数据框。
+    st_drop_geometry() %>%
+    mutate(mesh_8d = substr(MESH_CODE, 1, 8), pop = PopT) %>%
+    select(mesh_8d, pop) %>%
+    # 构建7位数mesh编号。
+    mutate(
+      mesh_6d = substr(mesh_8d, 1, 6),
+      mesh_10d_7 = substr(mesh_8d, 7, 7),
+      mesh_10d_8 = substr(mesh_8d, 8, 8),
+      mesh_7d_7 = case_when(
+        mesh_10d_7 <= 4 & mesh_10d_8 <= 4 ~ 1,
+        mesh_10d_7 <= 4 & mesh_10d_8 >= 5 ~ 2,
+        mesh_10d_7 >= 5 & mesh_10d_8 <= 4 ~ 3,
+        mesh_10d_7 >= 5 & mesh_10d_8 >= 5 ~ 4
+      ),
+      mesh = paste0(mesh_6d, mesh_7d_7)
+    ) %>%
+    # 分组计算每个7位数mesh的总人口密度。每个7位数mesh应包含25个8位数mesh，若一个7位数mesh内含8位数mesh不满25个，意味着无人口mesh的地方常住人口为0。
+    group_by(mesh) %>%
+    summarise(
+      mesh_8d_num = n(),
+      pop = sum(pop, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(stage = stage_x) %>%
+    return()
+}
+read_pop("Mesh100Pop2015", 1)
 
-# 读取日本空5千米mesh数据作为底图，并进行裁切和筛选。
-city_mesh <-
-  st_intersection(
-    city, st_read("data_raw/mesh5") %>% st_transform(crs = 6690)
-  ) %>%
-  select(pref, city, mesh = Descriptio) %>%
-  mutate(
-    area = as.numeric(st_area(.))/1e+06, .before = "geometry"
-  ) %>%
-  # 漏洞：一个完整mesh面积为25平方千米，只留下大于5平方千米的mesh。
-  filter(area > 5)
-
-# 读取日本鹿分布数据。
-jp_deer <-
-  # GIS数据。
-  st_read(dsn = "data_raw/japan_deer", layer = "生息密度2022") %>%
-  mutate(mesh = as.character(mesh)) %>%
-  left_join(
-    # 添加Excel表格中的历年鹿数据。
-    read.csv("data_raw/japan_deer/2014_2022年度全国推定生息密度.csv") %>%
-      tibble() %>%
-      select(contains("メッシュ"), contains("2015"), contains("2021")) %>%
-      rename_with(~ c("mesh", "d_2015", "d_2021")) %>%
-      mutate(mesh = as.character(mesh)),
-    by = "mesh"
-  ) %>%
-  # 删除无数据网格。
-  filter(!is.na(d_2015) | !is.na(d_2021) | !is.na(d_2022))
-
-## Population ----
 # 各mesh人口数据。
-city_pop <- list.files("data_raw/Mesh100Pop2020") %>%
+city_pop,
+list.files("data_raw/Mesh100Pop2020") %>%
   .[!grepl("zip", .)] %>%
   lapply(function(x) st_read(paste0("data_raw/Mesh100Pop2020/", x))) %>%
   bind_rows() %>%
@@ -206,6 +199,7 @@ city_deer_risk <- city_mesh %>%
       mutate(stage = case_when(year == "2015" ~ 1, year == "2021" ~ 2)),
     by = "mesh"
   ) %>%
+  # 补充：缺失值一般是没有调查或者多年没有鹿出现的地方，因此填充为0.
   # 加入人口数据。
   left_join(city_pop, by = c("stage", "mesh")) %>%
   # 加入农田和森林数据。
