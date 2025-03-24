@@ -12,6 +12,59 @@ library(showtext)
 showtext_auto()
 
 # Data ----
+# Research area.
+# Bug: 可以移动到targets中。
+# 日本边界。
+japan_boundary <- st_read(
+  dsn = "data_raw/JapanBoundary", layer = "Japan_boundary"
+)
+# 城市列表。
+city_loc <- c(
+  "熊本市", "Kumamoto", 32.80300, 130.7079, 0, 0,
+  "福岡市", "Fukuoka", 33.59000, 130.4017, 0, 0,
+  "北九州市", "Kitakyushu", 33.88342, 130.8752, 0, 0,
+  "広島市", "Hiroshima", 34.39140, 132.4519, 0, 0,
+  "岡山市", "Okayama", 34.65511, 133.9196, 0, 0,
+  "神戸市", "Kobe", 34.69017, 135.1954, 0, 0,
+  "堺市", "Sakai", 34.57333, 135.4830, 0, 0,
+  "大阪市", "Osaka", 34.69375, 135.5021, 0, 0,
+  "浜松市", "Hamamatsu", 34.71089, 137.7262, 0, 0,
+  "京都市", "Kyoto", 35.01161, 135.7681, 0, 0,
+  "名古屋市", "Nagoya", 35.18140, 136.9064, 0, 0,
+  "静岡市", "Shizuoka", 34.97560, 138.3825, 0, 0,
+  "横浜市", "Yokohama", 35.45033, 139.6342, 0, 0,
+  "相模原市", "Sagamihara", 35.56667, 139.3667, 0, 0,
+  "川崎市", "Kawasaki", 35.53089, 139.7030, 0, 0,
+  "さいたま市", "Saitama", 35.86140, 139.6456, 0, 0,
+  "千葉市", "Chiba", 35.60728, 140.1064, 0, 0,
+  "新潟市", "Niigata", 37.90247, 139.0232, 0, 0,
+  "仙台市", "Sendai", 38.26822, 140.8694, 0, 0
+) %>%
+  matrix(byrow = TRUE, ncol = 6) %>%
+  as.data.frame() %>%
+  rename_with(~ c(
+    "city_jp", "city_en", "latitude", "longitude", "x_adj", "y_adj"
+  )) %>%
+  st_as_sf(coords = c("longitude", "latitude"), crs = st_crs(japan_boundary)) %>%
+  mutate(x_adj = as.numeric(x_adj), y_adj = as.numeric(y_adj))
+
+# 研究区域。
+jpeg(
+  filename = paste0("data_proc/map_", Sys.Date(), ".jpg"),
+  res = 300, width = 160, height = 80, units = "mm"
+)
+ggplot() +
+  geom_sf(data = japan_boundary, fill = "lightgrey", col = NA) +
+  geom_sf(
+    data = city_loc, size = 1.5, fill = "#fd8a93", col = "white",
+    shape = 21, stroke = 0.2
+  ) +
+  # Bug: 可以删除。
+  # geom_sf_text(data = city_loc, aes(label = city_en), size = 2) +
+  theme_bw()
+dev.off()
+
+# 载入数据。
 tar_load(city_mesh)
 tar_load(city_pop)
 tar_load(jp_deer)
