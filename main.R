@@ -130,21 +130,68 @@ apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
 ## Risk ----
 ### Map ----
+# 提取每个城市的经纬度范围，据此调整作图范围，以保证各图范围一致。
+city_bbox <- city_mesh %>%
+  group_by(city) %>%
+  summarise(geometry = st_union(geometry)) %>%
+  mutate(bbox = lapply(geometry, st_bbox)) %>%
+  st_drop_geometry() %>%
+  mutate(
+    xmin = lapply(bbox, function(x) x["xmin"]) %>% unlist(),
+    xmax = lapply(bbox, function(x) x["xmax"]) %>% unlist(),
+    ymin = lapply(bbox, function(x) x["ymin"]) %>% unlist(),
+    ymax = lapply(bbox, function(x) x["ymax"]) %>% unlist(),
+  ) %>%
+  ungroup() %>%
+  select(city, bbox, xmin, xmax, ymin, ymax) %>%
+  # 调整纬度范围：每个城市都以最大纬度跨度城市的纬度差进行调整。
+  mutate(
+    y_diff = ymax - ymin,
+    ymin_adj = ymin - (max(y_diff) - y_diff) / 2,
+    ymax_adj = ymax + (max(y_diff) - y_diff) / 2,
+    x_diff = xmax - xmin,
+    xmin_adj = xmin - (max(x_diff) * 1.2 - x_diff) / 2,
+    xmax_adj = xmax + (max(x_diff) * 1.2 - x_diff) / 2
+  ) %>%
+  left_join(
+    st_drop_geometry(select(city_loc, city_jp, city_en)),
+    by = c("city" = "city_jp")
+  ) %>%
+  arrange(city_en)
+
 map_risk <- function(risk_scale_name, risk_name, stage_n) {
-  lapply(
-    unique(city_loc$city_en),
-    function(x) {
+  purrr::pmap(
+    list(
+      city_bbox$city_en,
+      city_bbox$xmin_adj, city_bbox$xmax_adj,
+      city_bbox$ymin_adj, city_bbox$ymax_adj
+    ),
+    function(city_name, xmin, xmax, ymin, ymax) {
       city_deer_risk %>%
-        filter(city_en == x, stage == stage_n) %>%
+        filter(city_en == city_name, stage == stage_n) %>%
         mutate(risk_scale = case_when(
           get(risk_name) == 0 ~ NA, TRUE ~ get(risk_scale_name)
+        )) %>%
+        # Bug: 名字太长起缩写。
+        mutate(city_en = case_when(
+          city_en == "Kumamoto" ~ "Kuma.",
+          city_en == "Kitakyushu" ~ "Kitakyu.",
+          city_en == "Hiroshima" ~ "Hiroshi.",
+          city_en == "Okayama" ~ "Okaya.",
+          city_en == "Hamamatsu" ~ "Hamama.",
+          city_en == "Yokohama" ~ "Yokoha.",
+          city_en == "Sagamihara" ~ "Sagami.",
+          city_en == "Kawasaki" ~ "Kawasa.",
+          TRUE ~ city_en
         )) %>%
         ggplot() +
         geom_sf(aes(fill = risk_scale)) +
         scale_fill_gradient(
-          low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
+          low = "lightyellow", high = "red", na.value = "lightgreen",
+          limits = c(0, 1)
         ) +
         facet_wrap(.~ city_en) +
+        coord_sf(xlim = c(xmin, xmax), ylim = c(ymin, ymax)) +
         theme_bw() +
         theme(
           legend.position = "none",
@@ -153,35 +200,34 @@ map_risk <- function(risk_scale_name, risk_name, stage_n) {
         )
     }
   ) %>%
-    plot_grid(plotlist = ., nrow = 1)
+    plot_grid(plotlist = ., nrow = 1, align = "h")
 }
-
+# 作图。
 jpeg(
   filename = paste0("data_proc/map_risk_", Sys.Date(), ".jpg"),
-  res = 300, width = 4000, height = 2000
+  res = 300, width = 3800, height = 2000
 )
 map_risk("risk_human_scale", "risk_human", 1) /
-  map_risk("risk_human_scale", "risk_human", 2)
+  map_risk("risk_human_scale", "risk_human", 2) /
+  map_risk("risk_agr_scale", "risk_agr", 1) /
+  map_risk("risk_agr_scale", "risk_agr", 2) /
+  map_risk("risk_forest_scale", "risk_forest", 1) /
+  map_risk("risk_forest_scale", "risk_forest", 2)
 dev.off()
 
-lapply(
-  unique(city_deer_risk$city),
-  function(x) {
-    city_deer_risk %>%
-      filter(city == x) %>%
-      mutate(risk_human_scale = case_when(
-        risk_human == 0 ~ NA, TRUE ~ risk_human_scale
-      )) %>%
-      ggplot() +
-      geom_sf(aes(fill = risk_human_scale)) +
-      scale_fill_gradient(
-        low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
-      ) +
-      theme_bw() +
-      theme(legend.position = "none")
-  }
-) %>%
-  cowplot::plot_grid(plotlist = .)
+# Bug: 图例另画。
+# 提取图例。
+# plt_legend <- city_deer_risk %>%
+#   filter(stage == stage_n) %>%
+#   mutate(risk_scale = case_when(
+#     get(risk_name) == 0 ~ NA, TRUE ~ get(risk_scale_name)
+#   )) %>%
+#   ggplot() +
+#   geom_sf(aes(fill = risk_scale)) +
+#   scale_fill_gradient(
+#     low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
+#   )
+# legend <- get_legend(plt_legend)
 
 ### Box plot ----
 # Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
