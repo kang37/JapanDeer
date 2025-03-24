@@ -43,11 +43,11 @@ knitr::opts_chunk$set(echo = FALSE)
 
 首先看各个城市的基础数据：鹿、人口、森林、农田的空间分布。
 
-分阶段来看鹿的空间分布如下，其中\"1\"表示2015年，\"2\"表示2021年。可以看到有些城市只有少量网格有数据，我需要再检查一下这些网格，看是数据缺失还是作为0值处理。
+分阶段来看鹿的空间分布如下，其中"1"表示2015年，"2"表示2021年。可以看到有些城市只有少量网格有数据，我需要再检查一下这些网格，看是数据缺失还是作为0值处理。
 
 ```{r}
 tm_shape(city_deer_risk_tar %>% filter(!is.na(stage))) + 
-  tm_polygons(col = "deer") + 
+  tm_polygons(fill = "deer") + 
   tm_facets(by = "city", along = "stage")
 ```
 
