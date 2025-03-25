@@ -277,23 +277,37 @@ risk_boxplot <- function(risk_name, y_name) {
   theme(legend.position = "bottom")
 
 ### Risk summary ----
-# 各个城市的风险中位数、平均值、基尼系数。
-# 漏洞：应该算中位数吗？NA值也尚未处理。
+# 对各阶段各城市各风险数据进行正态性检验。
+lapply(
+  c("risk_human_scale", "risk_agr_scale", "risk_forest_scale"),
+  function(risk_name) {
+    print(risk_name)
+    st_drop_geometry(city_deer_risk) %>%
+      group_by(stage, city_en) %>%
+      summarise(
+        # 人兽冲突。
+        unique_val_num = length(unique(get(risk_name))),
+        risk_shapiro_p = ifelse(
+          unique_val_num > 5, shapiro.test(risk_human_scale)$p.value, NA
+        ),
+        risk_norm = c(risk_shapiro_p >= 0.05),
+        .groups = "drop"
+      ) %>%
+      pull(risk_norm) %>%
+      table(useNA = "ifany")
+  }
+)
+
+# 各个城市的风险中位数和基尼系数。
+# 由于数据不符合正态分布，故不计算平均值。
 risk_smry <-
   st_drop_geometry(city_deer_risk) %>%
-  # Bug.
-  filter(!is.na(stage)) %>%
   group_by(stage, city_en) %>%
   summarise(
     across(
       c(risk_human_scale, risk_agr_scale, risk_forest_scale),
       ~ median(.x, na.rm = TRUE),
       .names = "{.col}_mid"
-    ),
-    across(
-      c(risk_human_scale, risk_agr_scale, risk_forest_scale),
-      ~ mean(.x, na.rm = TRUE),
-      .names = "{.col}_mean"
     ),
     across(
       c(risk_human_scale, risk_agr_scale, risk_forest_scale),
@@ -310,22 +324,35 @@ segment_plt_smry <- function(smry_x) {
     pivot_longer(
       cols = ends_with(smry_x), names_to = "risk_cat", values_to = "risk_val"
     ) %>%
+    # 对风险类别进行排序。
+    mutate(
+      risk_cat = case_when(
+        risk_cat == paste0("risk_human_scale_", smry_x) ~ "Risk deer-human",
+        risk_cat == paste0("risk_agr_scale_", smry_x) ~ "Risk deer-agri",
+        risk_cat == paste0("risk_forest_scale_", smry_x) ~ "Risk deer-forest"
+      ),
+      risk_cat = factor(risk_cat, levels = c(
+        "Risk deer-human", "Risk deer-agri", "Risk deer-forest"
+      ))
+    ) %>%
     pivot_wider(names_from = stage, values_from = risk_val) %>%
     ggplot() +
     geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
     geom_point(
-      aes(city_en, `1`), fill = "lightgreen", col = "darkgreen", shape = 21
+      aes(city_en, `1`), fill = "#56BCC2", col = "darkgreen", shape = 21
     ) +
     geom_point(
-      aes(city_en, `2`), fill = "pink", col = "red", shape = 21, alpha = 0.8
+      aes(city_en, `2`), fill = "#F8766D", col = "red", shape = 21, alpha = 0.8
     ) +
     facet_grid(risk_cat ~., scales = "free") +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 90))
+    theme(axis.text.x = element_text(angle = 90)) +
+    labs(x = NULL, y = smry_x)
 }
 segment_plt_smry("mid")
-segment_plt_smry("mean")
-segment_plt_smry("gini")
+segment_plt_smry("gini") +
+  lims(y = c(0, 1)) +
+  labs(y = "Gini coefficient")
 
 ## Change rate ----
 # 每个网格的变化率。
@@ -380,4 +407,8 @@ tm_shape(city_deer_risk_rate) +
 write.csv(
   city_deer_risk,
   paste0("data_proc/各城市各网格结果_", Sys.Date(), ".csv")
+)
+write.csv(
+  risk_smry,
+  paste0("data_proc/各城市风险中位数和基尼系数_", Sys.Date(), ".csv")
 )
