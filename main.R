@@ -229,7 +229,7 @@ dev.off()
 #   )
 # legend <- get_legend(plt_legend)
 
-### Box plot ----
+### Risk box plot ----
 # Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
 city_deer_risk %>%
   st_drop_geometry() %>%
@@ -276,6 +276,7 @@ risk_boxplot <- function(risk_name, y_name) {
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
 
+### Risk summary ----
 # 各个城市的风险中位数、平均值、基尼系数。
 # 漏洞：应该算中位数吗？NA值也尚未处理。
 risk_smry <-
@@ -375,13 +376,8 @@ tm_shape(city_deer_risk_rate) +
   tm_facets(by = "city_en", along = "risk_cat")
 
 # Export ----
-# 各个变量中位数。
-city_deer_risk %>%
-  st_drop_geometry() %>%
-  group_by(city) %>%
-  summarise(
-    across(d_2022:risk_forest, median, .names = "{.col}_mid"),
-    across(risk_human:risk_forest, Gini, .names = "{.col}_gini")
-  ) %>%
-  write.csv(paste0("data_proc/city_deer_risk_", Sys.Date(), ".csv"))
-
+# 各网格风险计算结果。
+write.csv(
+  city_deer_risk,
+  paste0("data_proc/各城市各网格结果_", Sys.Date(), ".csv")
+)
