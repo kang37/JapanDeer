@@ -330,42 +330,49 @@ segment_plt_smry("gini")
 # 每个网格的变化率。
 # Bug: 应该挪到前面。
 city_deer_risk_rate <-
-  # Bug：应该用空网格来叠加。
-  city_deer_risk %>%
+  city_mesh %>%
   select(mesh, geometry) %>%
   left_join(
     city_deer_risk %>%
       st_drop_geometry() %>%
-      select(stage, city, mesh, risk_human, risk_agr, risk_forest) %>%
+      select(stage, city_en, mesh, contains("scale")) %>%
       pivot_longer(
-        cols = c(risk_human, risk_agr, risk_forest),
-        names_to = "risk_cat", values_to = "risk_val"
+        cols = contains("scale"), names_to = "risk_cat", values_to = "risk_val"
       ) %>%
-      # Bug.
-      filter(!is.na(stage)) %>%
       pivot_wider(
-        id_cols = c(city, mesh, risk_cat),
+        id_cols = c(city_en, mesh, risk_cat),
         names_from = stage, values_from = risk_val, names_prefix = "stage_"
       ) %>%
       mutate(chg_rate = (stage_2 - stage_1) / stage_1),
-    by = "mesh"
-  )
+    by = "mesh", relationship = "many-to-many"
+  ) %>%
+  # 对风险进行排序。
+  mutate(risk_cat = factor(risk_cat, levels = c(
+    "risk_human_scale", "risk_agr_scale", "risk_forest_scale"
+  )))
 
 # 各个城市的增长率。
 city_deer_risk_rate %>%
   st_drop_geometry() %>%
-  # Bug.
-  filter(!is.na(chg_rate)) %>%
-  ggplot(aes(city, chg_rate)) +
+  ggplot(aes(city_en, chg_rate)) +
   geom_boxplot() +
-  geom_point(alpha = 0.3) +
+  geom_jitter(alpha = 0.3) +
   facet_wrap(.~ risk_cat, ncol = 1) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+# 对数尺度。
+city_deer_risk_rate %>%
+  st_drop_geometry() %>%
+  ggplot(aes(city_en, log(chg_rate))) +
+  geom_violin() +
+  facet_wrap(.~ risk_cat, ncol = 1) +
+  theme_bw() +
   theme(axis.text.x = element_text(angle = 90))
 
 # 增长率的空间分布。
 tm_shape(city_deer_risk_rate) +
   tm_polygons(col = "chg_rate") +
-  tm_facets(by = "city", along = "risk_cat")
+  tm_facets(by = "city_en", along = "risk_cat")
 
 # Export ----
 # 各个变量中位数。
