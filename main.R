@@ -5,6 +5,7 @@ library(mapview)
 library(tmap)
 library(tidyr)
 library(ggplot2)
+library(ggspatial)
 library(ggrepel)
 library(patchwork)
 library(cowplot)
@@ -63,6 +64,9 @@ ggplot() +
   geom_sf(
     data = city_loc, size = 1.5, fill = "#fd8a93", col = "white",
     shape = 21, stroke = 0.2
+  ) +
+  annotation_north_arrow(
+    location = "tl", style = north_arrow_fancy_orienteering()
   ) +
   # Bug: 可以删除。
   # geom_sf_text(data = city_loc, aes(label = city_en), size = 2) +
@@ -217,17 +221,19 @@ dev.off()
 
 # Bug: 图例另画。
 # 提取图例。
-# plt_legend <- city_deer_risk %>%
-#   filter(stage == stage_n) %>%
-#   mutate(risk_scale = case_when(
-#     get(risk_name) == 0 ~ NA, TRUE ~ get(risk_scale_name)
-#   )) %>%
-#   ggplot() +
-#   geom_sf(aes(fill = risk_scale)) +
-#   scale_fill_gradient(
-#     low = "yellow", high = "red", na.value = "lightgreen", limits = c(0, 1)
-#   )
-# legend <- get_legend(plt_legend)
+city_deer_risk %>%
+  filter(city_en == "kyoto", risk_human_scale %in% seq(0, 1, 0.2)) %>%
+  mutate(risk_scale = case_when(
+    risk_human == 0 ~ NA, TRUE ~ risk_human_scale
+  )) %>%
+  ggplot() +
+  geom_sf(aes(fill = risk_scale)) +
+  scale_fill_gradient(
+    low = "lightyellow", high = "red", na.value = "lightgreen",
+    limits = c(0, 1), breaks = c(0, 0.5, 1.0)
+  ) +
+  labs(fill = "Scaled risk") +
+  theme(legend.position = "top")
 
 ### Risk box plot ----
 # Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
@@ -327,32 +333,43 @@ segment_plt_smry <- function(smry_x) {
     # 对风险类别进行排序。
     mutate(
       risk_cat = case_when(
-        risk_cat == paste0("risk_human_scale_", smry_x) ~ "Risk deer-human",
-        risk_cat == paste0("risk_agr_scale_", smry_x) ~ "Risk deer-agri",
-        risk_cat == paste0("risk_forest_scale_", smry_x) ~ "Risk deer-forest"
+        risk_cat == paste0("risk_human_scale_", smry_x) ~ "Deer-human risk",
+        risk_cat == paste0("risk_agr_scale_", smry_x) ~ "Deer-agri risk",
+        risk_cat == paste0("risk_forest_scale_", smry_x) ~ "Deer-forest risk"
       ),
       risk_cat = factor(risk_cat, levels = c(
-        "Risk deer-human", "Risk deer-agri", "Risk deer-forest"
+        "Deer-human risk", "Deer-agri risk", "Deer-forest risk"
       ))
     ) %>%
     pivot_wider(names_from = stage, values_from = risk_val) %>%
     ggplot() +
     geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
     geom_point(
-      aes(city_en, `1`), fill = "#56BCC2", col = "darkgreen", shape = 21
+      aes(city_en, `1`, fill = "1"), col = "darkgreen", shape = 21
     ) +
     geom_point(
-      aes(city_en, `2`), fill = "#F8766D", col = "red", shape = 21, alpha = 0.8
+      aes(city_en, `2`, fill = "2"), col = "red", shape = 21, alpha = 0.8
+    ) +
+    # 设置图例。
+    scale_fill_manual(
+      name = "Stage", values = c("1" = "#56BCC2", "2" = "#F8766D")
     ) +
     facet_grid(risk_cat ~., scales = "free") +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 90)) +
+    theme(axis.text.x = element_text(angle = 90), legend.position = "bottom") +
     labs(x = NULL, y = smry_x)
 }
 segment_plt_smry("mid")
 segment_plt_smry("gini") +
   lims(y = c(0, 1)) +
-  labs(y = "Gini coefficient")
+  labs(y = "Gini coefficient") +
+  scale_color_manual(name = "Legend Title",
+                     values = c("darkgreen" = "red", "red" = "blue")) +
+  guides(color = guide_legend(override.aes = list(shape = 16)))
+  geom_point(
+    data = data.frame(x = 1:5, y = 1:5),
+
+  )
 
 ## Change rate ----
 # 每个网格的变化率。
