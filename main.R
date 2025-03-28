@@ -182,7 +182,7 @@ map_risk <- function(risk_scale_name, risk_name, stage_n) {
           city_en == "Kitakyushu" ~ "Kitakyu.",
           city_en == "Hiroshima" ~ "Hiroshi.",
           city_en == "Okayama" ~ "Okaya.",
-          city_en == "Hamamatsu" ~ "Hamama.",
+          city_en == "Hamamatsu" ~ "Hama.",
           city_en == "Yokohama" ~ "Yokoha.",
           city_en == "Sagamihara" ~ "Sagami.",
           city_en == "Kawasaki" ~ "Kawasa.",
@@ -209,7 +209,7 @@ map_risk <- function(risk_scale_name, risk_name, stage_n) {
 # 作图。
 jpeg(
   filename = paste0("data_proc/map_risk_", Sys.Date(), ".jpg"),
-  res = 300, width = 3800, height = 2000
+  res = 300, width = 4000, height = 2000
 )
 map_risk("risk_human_scale", "risk_human", 1) /
   map_risk("risk_human_scale", "risk_human", 2) /
