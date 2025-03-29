@@ -236,6 +236,24 @@ city_deer_risk %>%
   theme(legend.position = "top")
 
 ### Risk box plot ----
+# 各城市前后风险差异是否显著。
+comp_risk_bf <- function(risk_name) {
+  city_deer_risk %>%
+    st_drop_geometry() %>%
+    select(city_en, mesh, stage, risk_name) %>%
+    pivot_wider(names_from = stage, values_from = risk_name) %>%
+    group_by(city_en) %>%
+    summarise(
+      p = wilcox.test(`1`, `2`, paired = TRUE)$p.value, .groups = "drop"
+    ) %>%
+    mutate(p_mark = case_when(
+      p < 0.001 ~ "***", p < 0.01 ~ "**", p < 0.05 ~ "*", p >= 0.05 ~ ""
+    ))
+}
+comp_risk_bf("risk_human_scale")
+comp_risk_bf("risk_agr_scale")
+comp_risk_bf("risk_forest_scale")
+
 # Bug: 如果城市的所有mesh的所有风险都为0，那么应该去掉。
 city_deer_risk %>%
   st_drop_geometry() %>%
@@ -251,36 +269,60 @@ city_deer_risk %>%
   theme(axis.text.x = element_text(angle = 90))
 # Bug: 最后一个子图的Y轴范围需要更改。
 # 函数：用于做风险对比箱形图。
-risk_boxplot <- function(risk_name, y_name) {
+risk_boxplot <- function(risk_name, y_name, label_dt, label_y) {
   city_deer_risk %>%
     st_drop_geometry() %>%
     ggplot() +
     # Bug: 早点把stage变成character比较好。
     geom_boxplot(aes(city_en, get(risk_name), col = as.character(stage))) +
+    geom_text(
+      data = label_dt, aes(city_en, label_y, label = p_mark), size = 3
+    ) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90)) +
     labs(x = NULL, y = y_name, col = "Stage")
 }
-(
-  risk_boxplot("risk_human", "Human-deer\nrisk") +
-    coord_cartesian(ylim = c(0, 1e6))
-) /
-  risk_boxplot("risk_forest", "Forest-deer\nrisk") /
-  risk_boxplot("risk_agr", "Agri-deer\nrisk") +
-  plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
 # 标准化数值作图。
 (
-  risk_boxplot("risk_human_scale", "Human-deer\nrisk") +
-    coord_cartesian(ylim = c(0, 0.1)) +
+  risk_boxplot(
+    "risk_human_scale", "Human-deer\nrisk",
+    comp_risk_bf("risk_human_scale"), -0.02
+  ) +
+    coord_cartesian(ylim = c(-0.02, 0.2)) +
     theme(axis.text.x = element_blank())
 ) / (
-  risk_boxplot("risk_agr_scale", "Agri-deer\nrisk") +
+  risk_boxplot(
+    "risk_agr_scale", "Agri-deer\nrisk",
+    comp_risk_bf("risk_agr_scale"), -0.1
+  ) +
     theme(axis.text.x = element_blank())
 ) /
-  risk_boxplot("risk_forest_scale", "Forest-deer\nrisk") +
+  risk_boxplot(
+    "risk_forest_scale", "Forest-deer\nrisk",
+    comp_risk_bf("risk_forest_scale"), -0.1
+  ) +
   plot_layout(guides = "collect") &
-  theme(legend.position = "bottom")
+  theme(legend.position = "top")
+# 标准化值作图：Y轴完整版。
+(
+  risk_boxplot(
+    "risk_human_scale", "Human-deer\nrisk",
+    comp_risk_bf("risk_human_scale"), -0.1
+  ) +
+    theme(axis.text.x = element_blank())
+) / (
+  risk_boxplot(
+    "risk_agr_scale", "Agri-deer\nrisk",
+    comp_risk_bf("risk_agr_scale"), -0.1
+  ) +
+    theme(axis.text.x = element_blank())
+) /
+  risk_boxplot(
+    "risk_forest_scale", "Forest-deer\nrisk",
+    comp_risk_bf("risk_forest_scale"), -0.1
+  ) +
+  plot_layout(guides = "collect") &
+  theme(legend.position = "top")
 
 ### Risk summary ----
 # 对各阶段各城市各风险数据进行正态性检验。
@@ -345,18 +387,18 @@ segment_plt_smry <- function(smry_x) {
     ggplot() +
     geom_segment(aes(x = city_en, y = `1`, yend = `2`)) +
     geom_point(
-      aes(city_en, `1`, fill = "1"), col = "darkgreen", shape = 21
+      aes(city_en, `1`, fill = "1"), col = "red", shape = 21
     ) +
     geom_point(
-      aes(city_en, `2`, fill = "2"), col = "red", shape = 21, alpha = 0.8
+      aes(city_en, `2`, fill = "2"), col = "darkgreen", shape = 21, alpha = 0.8
     ) +
     # 设置图例。
     scale_fill_manual(
-      name = "Stage", values = c("1" = "#56BCC2", "2" = "#F8766D")
+      name = "Stage", values = c("1" = "#F8766D", "2" = "#56BCC2")
     ) +
     facet_grid(risk_cat ~., scales = "free") +
     theme_bw() +
-    theme(axis.text.x = element_text(angle = 90), legend.position = "bottom") +
+    theme(axis.text.x = element_text(angle = 90), legend.position = "right") +
     labs(x = NULL, y = smry_x)
 }
 segment_plt_smry("mid")
@@ -366,10 +408,6 @@ segment_plt_smry("gini") +
   scale_color_manual(name = "Legend Title",
                      values = c("darkgreen" = "red", "red" = "blue")) +
   guides(color = guide_legend(override.aes = list(shape = 16)))
-  geom_point(
-    data = data.frame(x = 1:5, y = 1:5),
-
-  )
 
 ## Change rate ----
 # 每个网格的变化率。
@@ -429,3 +467,11 @@ write.csv(
   risk_smry,
   paste0("data_proc/各城市风险中位数和基尼系数_", Sys.Date(), ".csv")
 )
+list(
+  comp_risk_bf("risk_human_scale") %>% rename(risk_human_scale = city_en),
+  comp_risk_bf("risk_agr_scale") %>% rename(risk_agr_scale = city_en),
+  comp_risk_bf("risk_forest_scale") %>% rename(risk_forest_scale = city_en)
+) %>%
+  openxlsx::write.xlsx(
+    paste0("data_proc/各城市前后风险对比_", Sys.Date(), ".xlsx")
+  )
