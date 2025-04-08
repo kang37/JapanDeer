@@ -163,12 +163,15 @@ city_bbox <- city_mesh %>%
   ) %>%
   arrange(city_en)
 
-map_risk <- function(risk_scale_name, risk_name, stage_n) {
+map_risk <- function(city_id_seq, risk_scale_name, risk_name, stage_n) {
+  # 筛选城市，如第1到第6个城市。
+  city_bbox_sub <- city_bbox[city_id_seq, ]
+  # 循环画图并且组合。
   purrr::pmap(
     list(
-      city_bbox$city_en,
-      city_bbox$xmin_adj, city_bbox$xmax_adj,
-      city_bbox$ymin_adj, city_bbox$ymax_adj
+      city_bbox_sub$city_en,
+      city_bbox_sub$xmin_adj, city_bbox_sub$xmax_adj,
+      city_bbox_sub$ymin_adj, city_bbox_sub$ymax_adj
     ),
     function(city_name, xmin, xmax, ymin, ymax) {
       city_deer_risk %>%
@@ -179,6 +182,7 @@ map_risk <- function(risk_scale_name, risk_name, stage_n) {
         # Bug: 名字太长起缩写。
         mutate(city_en = case_when(
           city_en == "Kumamoto" ~ "Kuma.",
+          city_en == "Fukuoka" ~ "Fukuo.",
           city_en == "Kitakyushu" ~ "Kitakyu.",
           city_en == "Hiroshima" ~ "Hiroshi.",
           city_en == "Okayama" ~ "Okaya.",
@@ -207,16 +211,43 @@ map_risk <- function(risk_scale_name, risk_name, stage_n) {
     plot_grid(plotlist = ., nrow = 1, align = "h")
 }
 # 作图。
+# 第一张分图。
 jpeg(
-  filename = paste0("data_proc/map_risk_", Sys.Date(), ".jpg"),
-  res = 300, width = 4000, height = 2000
+  filename = paste0("data_proc/map_risk_1_", Sys.Date(), ".jpg"),
+  res = 300, width = 1286, height = 2000
 )
-map_risk("risk_human_scale", "risk_human", 1) /
-  map_risk("risk_human_scale", "risk_human", 2) /
-  map_risk("risk_agr_scale", "risk_agr", 1) /
-  map_risk("risk_agr_scale", "risk_agr", 2) /
-  map_risk("risk_forest_scale", "risk_forest", 1) /
-  map_risk("risk_forest_scale", "risk_forest", 2)
+map_risk(1:6, "risk_human_scale", "risk_human", 1) /
+  map_risk(1:6, "risk_human_scale", "risk_human", 2) /
+  map_risk(1:6, "risk_agr_scale", "risk_agr", 1) /
+  map_risk(1:6, "risk_agr_scale", "risk_agr", 2) /
+  map_risk(1:6, "risk_forest_scale", "risk_forest", 1) /
+  map_risk(1:6, "risk_forest_scale", "risk_forest", 2)
+dev.off()
+
+# 第二张分图。
+jpeg(
+  filename = paste0("data_proc/map_risk_2_", Sys.Date(), ".jpg"),
+  res = 300, width = 1286, height = 2000
+)
+map_risk(7:12, "risk_human_scale", "risk_human", 1) /
+  map_risk(7:12, "risk_human_scale", "risk_human", 2) /
+  map_risk(7:12, "risk_agr_scale", "risk_agr", 1) /
+  map_risk(7:12, "risk_agr_scale", "risk_agr", 2) /
+  map_risk(7:12, "risk_forest_scale", "risk_forest", 1) /
+  map_risk(7:12, "risk_forest_scale", "risk_forest", 2)
+dev.off()
+
+# 第三张分图。
+jpeg(
+  filename = paste0("data_proc/map_risk_3_", Sys.Date(), ".jpg"),
+  res = 300, width = 1500, height = 2000
+)
+map_risk(13:19, "risk_human_scale", "risk_human", 1) /
+  map_risk(13:19, "risk_human_scale", "risk_human", 2) /
+  map_risk(13:19, "risk_agr_scale", "risk_agr", 1) /
+  map_risk(13:19, "risk_agr_scale", "risk_agr", 2) /
+  map_risk(13:19, "risk_forest_scale", "risk_forest", 1) /
+  map_risk(13:19, "risk_forest_scale", "risk_forest", 2)
 dev.off()
 
 # Bug: 图例另画。
