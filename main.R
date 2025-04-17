@@ -439,6 +439,12 @@ plt_mid_gini <- function(risk_type) {
   # 获得列名。
   risk_gini_name <- paste0("risk_", risk_type, "_scale_gini")
   risk_mid_name <- paste0("risk_", risk_type, "_scale_mid")
+  # 画城市标签用数据。
+  city_label_dt <- risk_smry %>%
+    filter(
+      risk_human_scale_mid + risk_agr_scale_mid + risk_forest_scale_mid != 0,
+      stage == 1
+    )
   # 作图。
   risk_smry %>%
     filter(
@@ -447,11 +453,16 @@ plt_mid_gini <- function(risk_type) {
     ggplot() +
     geom_path(
       aes(get(risk_gini_name), get(risk_mid_name), group = city_en),
-      col = "darkgrey",
+      col = "darkgrey", alpha = 0.8,
       arrow = arrow(type = "closed", length = unit(0.1, "inches"))
     ) +
     geom_point(
-      aes(get(risk_gini_name), get(risk_mid_name), col = as.character(stage))
+      aes(get(risk_gini_name), get(risk_mid_name), col = as.character(stage)),
+      alpha = 0.9
+    ) +
+    geom_label_repel(
+      data = city_label_dt,
+      aes(get(risk_gini_name), get(risk_mid_name), label = city_en), size = 1
     ) +
     theme_bw() +
     labs(
@@ -459,10 +470,9 @@ plt_mid_gini <- function(risk_type) {
       y = paste0("Deer-", risk_type, " risk median value"),
       col = "Stage"
     ) +
-    theme(legend.position = "none") +
-    facet_wrap(.~ city_en, ncol = 1)
+    theme(legend.position = "none")
 }
-png("data_proc/mid_gini_city_stage.png", width = 1500, height = 2000, res = 300)
+png("data_proc/mid_gini_city_stage.png", width = 2000, height = 800, res = 300)
 plt_mid_gini("human") |
   plt_mid_gini("agr") |
   plt_mid_gini("forest")
