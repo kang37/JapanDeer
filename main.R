@@ -422,13 +422,51 @@ segment_plt_smry <- function(smry_x) {
     theme(axis.text.x = element_text(angle = 90), legend.position = "right") +
     labs(x = NULL, y = smry_x)
 }
+# 中值变化。
 segment_plt_smry("mid")
+# 基尼系数变化。
 segment_plt_smry("gini") +
   lims(y = c(0, 1)) +
   labs(y = "Gini coefficient") +
-  scale_color_manual(name = "Legend Title",
-                     values = c("darkgreen" = "red", "red" = "blue")) +
+  scale_color_manual(
+    name = "Legend Title", values = c("darkgreen" = "red", "red" = "blue")
+  ) +
   guides(color = guide_legend(override.aes = list(shape = 16)))
+
+# 中值和基尼系数变化综合图。
+# 作图函数。
+plt_mid_gini <- function(risk_type) {
+  # 获得列名。
+  risk_gini_name <- paste0("risk_", risk_type, "_scale_gini")
+  risk_mid_name <- paste0("risk_", risk_type, "_scale_mid")
+  # 作图。
+  risk_smry %>%
+    filter(
+      risk_human_scale_mid + risk_agr_scale_mid + risk_forest_scale_mid != 0
+    ) %>%
+    ggplot() +
+    geom_path(
+      aes(get(risk_gini_name), get(risk_mid_name), group = city_en),
+      col = "darkgrey",
+      arrow = arrow(type = "closed", length = unit(0.1, "inches"))
+    ) +
+    geom_point(
+      aes(get(risk_gini_name), get(risk_mid_name), col = as.character(stage))
+    ) +
+    theme_bw() +
+    labs(
+      x = paste0("Deer-", risk_type, " risk\nGini coefficient"),
+      y = paste0("Deer-", risk_type, " risk median value"),
+      col = "Stage"
+    ) +
+    theme(legend.position = "none") +
+    facet_wrap(.~ city_en, ncol = 1)
+}
+png("data_proc/mid_gini_city_stage.png", width = 1500, height = 2000, res = 300)
+plt_mid_gini("human") |
+  plt_mid_gini("agr") |
+  plt_mid_gini("forest")
+dev.off()
 
 ## Change rate ----
 # 每个网格的变化率。
