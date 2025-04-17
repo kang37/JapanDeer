@@ -1,16 +1,8 @@
 # Package ----
-library(sf)
-library(dplyr)
-library(mapview)
-library(tmap)
-library(tidyr)
-library(ggplot2)
-library(ggspatial)
-library(ggrepel)
-library(patchwork)
-library(cowplot)
-library(DescTools)
-library(showtext)
+pacman::p_load(
+  dplyr, tidyr, sf, DescTools, ggplot2, ggspatial, ggrepel, tmap,
+  mapview, patchwork, cowplot, showtext
+)
 showtext_auto()
 
 # Data ----
@@ -53,25 +45,6 @@ city_loc <- c(
     y_adj = as.numeric(y_adj),
     city_en = factor(city_en, levels = city_en)
   )
-
-# 研究区域。
-jpeg(
-  filename = paste0("data_proc/map_", Sys.Date(), ".jpg"),
-  res = 300, width = 160, height = 80, units = "mm"
-)
-ggplot() +
-  geom_sf(data = japan_boundary, fill = "lightgrey", col = NA) +
-  geom_sf(
-    data = city_loc, size = 1.5, fill = "#fd8a93", col = "white",
-    shape = 21, stroke = 0.2
-  ) +
-  annotation_north_arrow(
-    location = "tl", style = north_arrow_fancy_orienteering()
-  ) +
-  # Bug: 可以删除。
-  # geom_sf_text(data = city_loc, aes(label = city_en), size = 2) +
-  theme_bw()
-dev.off()
 
 # 载入数据。
 tar_load(city_mesh)
@@ -130,7 +103,24 @@ apply(city_deer_risk, 2, function(x) sum(is.na(x)))
 
 # Analysis ----
 ## General ----
-# Bug: 研究区域作图。
+# 研究区域。
+jpeg(
+  filename = paste0("data_proc/map_", Sys.Date(), ".jpg"),
+  res = 300, width = 160, height = 80, units = "mm"
+)
+ggplot() +
+  geom_sf(data = japan_boundary, fill = "lightgrey", col = NA) +
+  geom_sf(
+    data = city_loc, size = 1.5, fill = "#fd8a93", col = "white",
+    shape = 21, stroke = 0.2
+  ) +
+  annotation_north_arrow(
+    location = "tl", style = north_arrow_fancy_orienteering()
+  ) +
+  # Bug: 可以删除。
+  # geom_sf_text(data = city_loc, aes(label = city_en), size = 2) +
+  theme_bw()
+dev.off()
 
 ## Risk ----
 ### Map ----
