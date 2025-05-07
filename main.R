@@ -22,9 +22,9 @@ city_loc <- c(
   "神戸市", "Kobe", 34.69017, 135.1954, 0, 0,
   "堺市", "Sakai", 34.57333, 135.4830, 0, 0,
   "大阪市", "Osaka", 34.69375, 135.5021, 0, 0,
-  "浜松市", "Hamamatsu", 34.71089, 137.7262, 0, 0,
   "京都市", "Kyoto", 35.01161, 135.7681, 0, 0,
   "名古屋市", "Nagoya", 35.18140, 136.9064, 0, 0,
+  "浜松市", "Hamamatsu", 34.71089, 137.7262, 0, 0,
   "静岡市", "Shizuoka", 34.97560, 138.3825, 0, 0,
   "横浜市", "Yokohama", 35.45033, 139.6342, 0, 0,
   "相模原市", "Sagamihara", 35.56667, 139.3667, 0, 0,
@@ -423,7 +423,8 @@ segment_plt_smry <- function(smry_x) {
     labs(x = NULL, y = smry_x)
 }
 # 中值变化。
-segment_plt_smry("mid")
+segment_plt_smry("mid") +
+  labs(y = "Risk median value")
 # 基尼系数变化。
 segment_plt_smry("gini") +
   lims(y = c(0, 1)) +
